@@ -2,6 +2,7 @@ package com.ringautopilot.app
 
 import android.Manifest
 import android.content.Intent
+import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -93,6 +94,14 @@ private fun RingAutopilotApp(container: AppContainer) {
                 lastToast?.cancel()
                 lastToast = Toast.makeText(context, message, Toast.LENGTH_LONG).also { it.show() }
                 useWifiAfterPermissions = false
+            } else {
+                val message = if (missingPermissions(context, includeNotifications = true).isEmpty()) {
+                    "All required permissions are granted."
+                } else {
+                    "Some permissions were denied. You can allow them in Android app settings."
+                }
+                lastToast?.cancel()
+                lastToast = Toast.makeText(context, message, Toast.LENGTH_LONG).also { it.show() }
             }
         },
     )
@@ -100,7 +109,21 @@ private fun RingAutopilotApp(container: AppContainer) {
     StatusScreen(
         viewModel = viewModel,
         requestPermissions = {
-            launchWifiPermissions(permissionLauncher, includeNotifications = true)
+            val missing = missingPermissions(context, includeNotifications = true)
+            when {
+                missing.isNotEmpty() -> permissionLauncher.launch(missing.toTypedArray())
+                !isLocationEnabled(context) -> context.startActivity(
+                    Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS),
+                )
+                else -> {
+                    lastToast?.cancel()
+                    lastToast = Toast.makeText(
+                        context,
+                        "All required permissions are already granted.",
+                        Toast.LENGTH_LONG,
+                    ).also { it.show() }
+                }
+            }
         },
         useCurrentWifi = {
             if (hasWifiPermissions(context)) {
@@ -112,7 +135,9 @@ private fun RingAutopilotApp(container: AppContainer) {
                 ).also { it.show() }
             } else {
                 useWifiAfterPermissions = true
-                launchWifiPermissions(permissionLauncher, includeNotifications = false)
+                permissionLauncher.launch(
+                    missingPermissions(context, includeNotifications = false).toTypedArray(),
+                )
             }
         },
     )
@@ -124,16 +149,20 @@ private fun hasWifiPermissions(context: android.content.Context): Boolean =
         Manifest.permission.ACCESS_FINE_LOCATION,
     ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-private fun launchWifiPermissions(
-    launcher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
+private fun missingPermissions(
+    context: android.content.Context,
     includeNotifications: Boolean,
-) {
-    val permissions = buildList {
+): List<String> = buildList {
         add(Manifest.permission.ACCESS_COARSE_LOCATION)
         add(Manifest.permission.ACCESS_FINE_LOCATION)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (includeNotifications) add(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
-    launcher.launch(permissions.toTypedArray())
-}
+    .filter {
+        ContextCompat.checkSelfPermission(context, it) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
+private fun isLocationEnabled(context: android.content.Context): Boolean =
+    context.getSystemService(LocationManager::class.java).isLocationEnabled

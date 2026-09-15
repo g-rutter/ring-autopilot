@@ -26,12 +26,10 @@ class AndroidWifiPresenceService(
 
     override val presence: StateFlow<PresenceState> = mutablePresence.asStateFlow()
 
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) = evaluate()
-        override fun onLost(network: Network) = evaluate()
-        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) =
-            evaluate()
-    }
+    @Volatile
+    private var callbackWifiSsid: String? = null
+
+    private val networkCallback = createNetworkCallback()
 
     override fun start() {
         if (started) return
@@ -59,14 +57,12 @@ class AndroidWifiPresenceService(
         val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
             ?.takeIf { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
             ?: return null
-        val wifiInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            (capabilities.transportInfo as? WifiInfo) ?: wifiManager.connectionInfo
-        } else {
-            wifiManager.connectionInfo
-        }
-        wifiInfo?.ssid
-            ?.removeSurrounding("\"")
-            ?.takeUnless { it.isBlank() || it == WifiManager.UNKNOWN_SSID }
+        ssidFrom(capabilities.transportInfo as? WifiInfo)
+            // Some Android 12+ devices return a redacted WifiInfo through
+            // ConnectivityManager even when precise location is allowed. Validate the
+            // SSID before falling back instead of only falling back when WifiInfo is null.
+            ?: ssidFrom(wifiManager.connectionInfo)
+            ?: callbackWifiSsid
     } catch (_: SecurityException) {
         null
     }
@@ -88,14 +84,9 @@ class AndroidWifiPresenceService(
                 return
             }
 
-            val wifiInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                capabilities.transportInfo as? WifiInfo
-            } else {
-                wifiManager.connectionInfo
-            }
-            val connectedSsid = wifiInfo?.ssid
-                ?.removeSurrounding("\"")
-                ?.takeUnless { it == WifiManager.UNKNOWN_SSID }
+            val connectedSsid = ssidFrom(capabilities.transportInfo as? WifiInfo)
+                ?: ssidFrom(wifiManager.connectionInfo)
+                ?: callbackWifiSsid
 
             mutablePresence.value = when {
                 connectedSsid == null -> PresenceState.UNKNOWN
@@ -106,4 +97,63 @@ class AndroidWifiPresenceService(
             mutablePresence.value = PresenceState.UNKNOWN
         }
     }
+
+    private fun createNetworkCallback(): ConnectivityManager.NetworkCallback {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return object : ConnectivityManager.NetworkCallback(
+                ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO,
+            ) {
+                override fun onAvailable(network: Network) {
+                    callbackWifiSsid = null
+                    evaluate()
+                }
+
+                override fun onLost(network: Network) = handleNetworkLost()
+
+                override fun onCapabilitiesChanged(
+                    network: Network,
+                    capabilities: NetworkCapabilities,
+                ) = handleCapabilitiesChanged(capabilities)
+            }
+        }
+
+        return object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                callbackWifiSsid = null
+                evaluate()
+            }
+
+            override fun onLost(network: Network) = handleNetworkLost()
+
+            override fun onCapabilitiesChanged(
+                network: Network,
+                capabilities: NetworkCapabilities,
+            ) = handleCapabilitiesChanged(capabilities)
+        }
+    }
+
+    private fun handleNetworkLost() {
+        callbackWifiSsid = null
+        evaluate()
+    }
+
+    private fun handleCapabilitiesChanged(capabilities: NetworkCapabilities) {
+        callbackWifiSsid = if (
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        ) {
+            ssidFrom(capabilities.transportInfo as? WifiInfo)
+        } else {
+            null
+        }
+        evaluate()
+    }
+
+    private fun ssidFrom(wifiInfo: WifiInfo?): String? = wifiInfo?.ssid
+        ?.removeSurrounding("\"")
+        ?.trim()
+        ?.takeUnless {
+            it.isBlank() ||
+                it == WifiManager.UNKNOWN_SSID ||
+                it.equals("<unknown ssid>", ignoreCase = true)
+        }
 }
