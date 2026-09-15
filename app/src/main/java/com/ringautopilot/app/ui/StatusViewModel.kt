@@ -59,8 +59,11 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         container.presenceService.refresh()
     }
 
-    fun useCurrentWifi() {
-        container.presenceService.currentWifiSsid()?.let(::saveHomeWifiSsid)
+    fun useCurrentWifi(): String {
+        val ssid = container.presenceService.currentWifiSsid()
+            ?: return "Could not read the connected Wi-Fi. Grant Location/Nearby Wi-Fi permission and ensure Location is turned on."
+        saveHomeWifiSsid(ssid)
+        return "Home Wi-Fi saved: $ssid"
     }
 
     fun saveRingCredentials(refreshToken: String, locationId: String) {

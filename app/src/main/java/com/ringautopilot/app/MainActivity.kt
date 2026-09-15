@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -16,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -59,6 +61,7 @@ private fun RingAutopilotApp(container: AppContainer) {
         factory = StatusViewModelFactory(container),
     )
     val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -76,7 +79,11 @@ private fun RingAutopilotApp(container: AppContainer) {
         onResult = {
             viewModel.refreshPresence()
             if (useWifiAfterPermissions) {
-                viewModel.useCurrentWifi()
+                Toast.makeText(
+                    context,
+                    viewModel.useCurrentWifi(),
+                    Toast.LENGTH_LONG,
+                ).show()
                 useWifiAfterPermissions = false
             }
         },
