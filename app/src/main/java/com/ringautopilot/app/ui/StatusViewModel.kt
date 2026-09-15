@@ -59,6 +59,10 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         container.presenceService.refresh()
     }
 
+    fun useCurrentWifi() {
+        container.presenceService.currentWifiSsid()?.let(::saveHomeWifiSsid)
+    }
+
     fun saveRingCredentials(refreshToken: String, locationId: String) {
         container.settingsRepository.updateRingLocationId(locationId)
         viewModelScope.launch {

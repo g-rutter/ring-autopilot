@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ringautopilot.app.automation.AutomationStatus
@@ -34,6 +35,7 @@ import com.ringautopilot.app.automation.AutomationStatus
 fun StatusScreen(
     viewModel: StatusViewModel,
     requestPermissions: () -> Unit,
+    useCurrentWifi: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var ssid by remember(state.homeWifiSsid) { mutableStateOf(state.homeWifiSsid) }
@@ -86,6 +88,7 @@ fun StatusScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Ring refresh token") },
                 supportingText = { Text("Generate with ring-auth-cli; it is encrypted on this device.") },
+                visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
             )
             OutlinedTextField(
@@ -100,12 +103,20 @@ fun StatusScreen(
                 Button(onClick = { viewModel.saveHomeWifiSsid(ssid) }) {
                     Text("Save Wi-Fi")
                 }
+                Button(onClick = useCurrentWifi) {
+                    Text("Use current Wi-Fi")
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = requestPermissions) {
                     Text("Grant permissions")
                 }
             }
             Button(
-                onClick = { viewModel.saveRingCredentials(refreshToken, locationId) },
+                onClick = {
+                    viewModel.saveRingCredentials(refreshToken, locationId)
+                    refreshToken = ""
+                },
                 enabled = refreshToken.isNotBlank(),
             ) {
                 Text("Save Ring credentials")

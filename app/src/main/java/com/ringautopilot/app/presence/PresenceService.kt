@@ -9,4 +9,7 @@ interface PresenceService {
     fun start()
     fun stop()
     fun refresh()
+
+    /** Returns the currently connected Wi-Fi SSID, or null when unavailable/permissionless. */
+    fun currentWifiSsid(): String?
 }

@@ -54,6 +54,25 @@ class AndroidWifiPresenceService(
 
     @SuppressLint("MissingPermission")
     @Suppress("DEPRECATION")
+    override fun currentWifiSsid(): String? = try {
+        val activeNetwork = connectivityManager.activeNetwork ?: return null
+        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
+            ?.takeIf { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
+            ?: return null
+        val wifiInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            capabilities.transportInfo as? WifiInfo
+        } else {
+            wifiManager.connectionInfo
+        }
+        wifiInfo?.ssid
+            ?.removeSurrounding("\"")
+            ?.takeUnless { it.isBlank() || it == WifiManager.UNKNOWN_SSID }
+    } catch (_: SecurityException) {
+        null
+    }
+
+    @SuppressLint("MissingPermission")
+    @Suppress("DEPRECATION")
     private fun evaluate() {
         val homeSsid = settingsRepository.settings.value.homeWifiSsid
         if (homeSsid.isBlank()) {

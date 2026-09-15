@@ -83,5 +83,6 @@ private fun RingAutopilotApp(container: AppContainer) {
             }
             permissionLauncher.launch(permissions.toTypedArray())
         },
+        useCurrentWifi = viewModel::useCurrentWifi,
     )
 }
