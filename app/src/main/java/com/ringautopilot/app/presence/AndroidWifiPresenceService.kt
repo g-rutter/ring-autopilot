@@ -60,7 +60,7 @@ class AndroidWifiPresenceService(
             ?.takeIf { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
             ?: return null
         val wifiInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            capabilities.transportInfo as? WifiInfo
+            (capabilities.transportInfo as? WifiInfo) ?: wifiManager.connectionInfo
         } else {
             wifiManager.connectionInfo
         }

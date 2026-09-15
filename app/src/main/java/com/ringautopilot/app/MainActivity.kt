@@ -11,6 +11,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -66,23 +70,39 @@ private fun RingAutopilotApp(container: AppContainer) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+    var useWifiAfterPermissions by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
-        onResult = { viewModel.refreshPresence() },
+        onResult = {
+            viewModel.refreshPresence()
+            if (useWifiAfterPermissions) {
+                viewModel.useCurrentWifi()
+                useWifiAfterPermissions = false
+            }
+        },
     )
 
     StatusScreen(
         viewModel = viewModel,
         requestPermissions = {
-            val permissions = buildList {
-                add(Manifest.permission.ACCESS_FINE_LOCATION)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    add(Manifest.permission.NEARBY_WIFI_DEVICES)
-                    add(Manifest.permission.POST_NOTIFICATIONS)
-                }
-            }
-            permissionLauncher.launch(permissions.toTypedArray())
+            launchWifiPermissions(permissionLauncher)
         },
-        useCurrentWifi = viewModel::useCurrentWifi,
+        useCurrentWifi = {
+            useWifiAfterPermissions = true
+            launchWifiPermissions(permissionLauncher)
+        },
     )
+}
+
+private fun launchWifiPermissions(
+    launcher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
+) {
+    val permissions = buildList {
+        add(Manifest.permission.ACCESS_FINE_LOCATION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            add(Manifest.permission.NEARBY_WIFI_DEVICES)
+            add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+    launcher.launch(permissions.toTypedArray())
 }
