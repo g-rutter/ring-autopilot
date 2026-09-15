@@ -17,12 +17,14 @@ import kotlinx.coroutines.launch
 
 data class StatusUiState(
     val homeWifiSsid: String = "",
+    val isSetupComplete: Boolean = false,
     val ringLocationId: String = "",
     val presence: PresenceState = PresenceState.UNKNOWN,
     val ringMode: RingMode = RingMode.UNKNOWN,
     val automationStatus: AutomationStatus = AutomationStatus.Idle,
     val ringValidationMessage: String = "Not yet checked",
     val ringOperationInProgress: Boolean = false,
+    val ringConnectionFailed: Boolean = false,
 )
 
 class StatusViewModel(private val container: AppContainer) : ViewModel() {
@@ -44,12 +46,14 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     ) { settings, presence, ringMode, automationStatus, validation ->
         StatusUiState(
             homeWifiSsid = settings.homeWifiSsid,
+            isSetupComplete = settings.homeWifiSsid.isNotBlank(),
             ringLocationId = settings.ringLocationId,
             presence = presence,
             ringMode = ringMode,
             automationStatus = automationStatus,
             ringValidationMessage = validation.message,
             ringOperationInProgress = validation.inProgress,
+            ringConnectionFailed = validation.connectionFailed,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -64,6 +68,10 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     fun saveHomeWifiSsid(ssid: String) {
         container.settingsRepository.updateHomeWifiSsid(ssid)
         container.presenceService.refresh()
+    }
+
+    fun saveRingLocationId(locationId: String) {
+        container.settingsRepository.updateRingLocationId(locationId)
     }
 
     fun useCurrentWifi(): String {
@@ -93,6 +101,7 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
                 .onFailure { error ->
                     mutableRingValidation.value = RingValidationState(
                         "Could not read Ring mode: ${error.userMessage()}",
+                        connectionFailed = true,
                     )
                 }
         }
@@ -111,6 +120,7 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
                 .onFailure { error ->
                     mutableRingValidation.value = RingValidationState(
                         "Could not switch to ${mode.displayName()}: ${error.userMessage()}",
+                        connectionFailed = true,
                     )
                 }
         }
@@ -127,6 +137,7 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
 private data class RingValidationState(
     val message: String = "Not yet checked",
     val inProgress: Boolean = false,
+    val connectionFailed: Boolean = false,
 )
 
 private fun RingMode.displayName(): String =

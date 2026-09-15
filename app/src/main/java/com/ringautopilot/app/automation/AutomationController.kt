@@ -72,10 +72,31 @@ class AutomationController(
             else -> return
         }
 
-        mutableStatus.value = AutomationStatus.Waiting(desiredMode, delaySeconds)
         transitionJob = scope.launch {
-            delay(delaySeconds * 1_000)
+            // Do not present a pending change when Ring is already in the desired
+            // mode (or when its status cannot yet be read).
+            val currentMode = ringService.refreshMode().getOrElse {
+                mutableStatus.value = AutomationStatus.Failed(
+                    it.message ?: "Could not read Ring mode",
+                )
+                return@launch
+            }
+            if (currentMode == desiredMode) {
+                mutableStatus.value = AutomationStatus.Idle
+                return@launch
+            }
+            countdownToSwitch(desiredMode, delaySeconds)
             switchIfNeeded(desiredMode)
+        }
+    }
+
+    /** Publishes each remaining second so the UI can show a genuine live countdown. */
+    private suspend fun countdownToSwitch(desiredMode: RingMode, delaySeconds: Long) {
+        var remainingSeconds = delaySeconds.coerceAtLeast(0)
+        while (remainingSeconds > 0) {
+            mutableStatus.value = AutomationStatus.Waiting(desiredMode, remainingSeconds)
+            delay(1_000)
+            remainingSeconds -= 1
         }
     }
 

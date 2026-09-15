@@ -12,11 +12,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,172 +43,151 @@ fun StatusScreen(
     useCurrentWifi: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var ssid by remember(state.homeWifiSsid) { mutableStateOf(state.homeWifiSsid) }
-    var refreshToken by remember { mutableStateOf("") }
-    var locationId by remember(state.ringLocationId) { mutableStateOf(state.ringLocationId) }
+    var setupRequested by remember { mutableStateOf(false) }
+    val showSetup = setupRequested || !state.isSetupComplete
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Ring Autopilot") }) },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text(
-                text = "Phone presence controls the Ring location mode after a safety delay.",
-                style = MaterialTheme.typography.bodyLarge,
-            )
-
-            StatusCard(
-                title = "Presence",
-                value = state.presence.displayName(),
-                detail = "Home Wi-Fi: ${state.homeWifiSsid.ifBlank { "Not set" }}",
-            )
-            StatusCard(
-                title = "Ring mode",
-                value = state.ringMode.displayName(),
-                detail = "Connect Ring credentials to enable automatic mode changes.",
-            )
-            StatusCard(
-                title = "Automation",
-                value = state.automationStatus.displayName(),
-                detail = "Away delay: 3 min · Arrival delay: 30 sec",
-            )
-
-            Text("Ring validation", style = MaterialTheme.typography.titleLarge)
-            StatusCard(
-                title = "Last Ring operation",
-                value = state.ringValidationMessage,
-                detail = "Selected location: ${state.ringLocationId.ifBlank { "Will be discovered when Ring is checked" }}",
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    onClick = viewModel::refreshRingMode,
-                    enabled = !state.ringOperationInProgress,
-                ) {
-                    Text("Check Ring mode")
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    onClick = { viewModel.setRingMode(RingMode.AWAY) },
-                    enabled = !state.ringOperationInProgress,
-                ) {
-                    Text("Set Away")
-                }
-                Button(
-                    onClick = { viewModel.setRingMode(RingMode.DISARMED) },
-                    enabled = !state.ringOperationInProgress,
-                ) {
-                    Text("Set Disarmed")
-                }
-            }
-            Text(
-                text = "Manual actions change the selected Ring location immediately. " +
-                    "Automatic presence monitoring is still active and can later apply its own mode after its delay.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Text("Setup", style = MaterialTheme.typography.titleLarge)
-            OutlinedTextField(
-                value = ssid,
-                onValueChange = { ssid = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Home Wi-Fi name (SSID)") },
-                singleLine = true,
-            )
-            Text(
-                text = "Use current Wi-Fi needs Android's Precise location permission and " +
-                    "Location services enabled. Notification permission is separate.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedTextField(
-                value = refreshToken,
-                onValueChange = { refreshToken = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Ring refresh token") },
-                supportingText = { Text("Generate with ring-auth-cli; it is encrypted on this device.") },
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true,
-            )
-            OutlinedTextField(
-                value = locationId,
-                onValueChange = { locationId = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Ring location ID (optional)") },
-                supportingText = { Text("Leave blank to use the first location on the account.") },
-                singleLine = true,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = { viewModel.saveHomeWifiSsid(ssid) }) {
-                    Text("Save Wi-Fi")
-                }
-                Button(onClick = useCurrentWifi) {
-                    Text("Use current Wi-Fi")
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = requestPermissions) {
-                    Text("Grant permissions")
-                }
-            }
-            Button(
-                onClick = {
-                    viewModel.saveRingCredentials(refreshToken, locationId)
-                    refreshToken = ""
+        topBar = {
+            TopAppBar(
+                title = { Text(if (showSetup) "Set up Ring Autopilot" else "Ring Autopilot") },
+                actions = {
+                    if (!showSetup) TextButton(onClick = { setupRequested = true }) { Text("Setup") }
+                    if (showSetup && state.isSetupComplete) {
+                        TextButton(onClick = { setupRequested = false }) { Text("Done") }
+                    }
                 },
-                enabled = refreshToken.isNotBlank(),
-            ) {
-                Text("Save Ring credentials")
-            }
-
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Monitoring runs as a foreground service so Android can keep it active " +
-                    "when the app is not open. Battery-saving settings may still need an exception.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        },
+    ) { padding ->
+        if (showSetup) {
+            SetupPage(
+                state = state,
+                viewModel = viewModel,
+                requestPermissions = requestPermissions,
+                useCurrentWifi = useCurrentWifi,
+                onDone = { setupRequested = false },
+                modifier = Modifier.padding(padding),
+            )
+        } else {
+            DashboardPage(state, viewModel, Modifier.padding(padding))
         }
     }
 }
 
 @Composable
-private fun StatusCard(title: String, value: String, detail: String) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.labelLarge)
-            Text(
-                value,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+private fun DashboardPage(state: StatusUiState, viewModel: StatusViewModel, modifier: Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        ModeHero(state)
+        Text(
+            "Presence: ${state.presence.displayName()}  •  ${automationSummary(state.automationStatus)}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(onClick = { viewModel.setRingMode(RingMode.AWAY) }, enabled = !state.ringOperationInProgress) {
+                Text("Away")
+            }
+            FilledTonalButton(onClick = { viewModel.setRingMode(RingMode.DISARMED) }, enabled = !state.ringOperationInProgress) {
+                Text("Disarm")
+            }
+            OutlinedButton(onClick = viewModel::refreshRingMode, enabled = !state.ringOperationInProgress) {
+                Text("Check")
+            }
+        }
+        Text(state.ringValidationMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            "Automatic changes use your home Wi-Fi after the safety delay.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun ModeHero(state: StatusUiState) {
+    val (headline, label, colors) = when {
+        state.ringConnectionFailed -> Triple("CAN'T CONNECT", "Ring status is unavailable", CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer))
+        else -> when (state.ringMode) {
+            RingMode.DISARMED -> Triple("DISARMED", "Ring is not armed", CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer))
+            RingMode.AWAY -> Triple("AWAY", "Ring is armed", CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer))
+            RingMode.UNKNOWN, RingMode.UNAVAILABLE -> Triple("NOT CHECKED", "Check Ring to get its current status", CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant))
+        }
+    }
+    Card(modifier = Modifier.fillMaxWidth(), colors = colors) {
+        Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, style = MaterialTheme.typography.labelLarge)
+            Text(headline, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
         }
     }
 }
 
-private fun Enum<*>.displayName(): String =
-    name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase)
-
-private fun AutomationStatus.displayName(): String = when (this) {
-    AutomationStatus.Idle -> "Idle"
-    is AutomationStatus.Waiting -> "Waiting ${delaySeconds}s to switch to ${desiredMode.displayName()}"
-    is AutomationStatus.Switching -> "Switching to ${desiredMode.displayName()}"
-    is AutomationStatus.Retrying -> "Retrying ${desiredMode.displayName()} " +
-        "(${attempt + 1}/$maxAttempts) in ${delaySeconds}s"
-    is AutomationStatus.Failed -> "Needs attention: $message"
+@Composable
+private fun SetupPage(
+    state: StatusUiState,
+    viewModel: StatusViewModel,
+    requestPermissions: () -> Unit,
+    useCurrentWifi: () -> Unit,
+    onDone: () -> Unit,
+    modifier: Modifier,
+) {
+    var ssid by remember(state.homeWifiSsid) { mutableStateOf(state.homeWifiSsid) }
+    var refreshToken by remember { mutableStateOf("") }
+    var locationId by remember(state.ringLocationId) { mutableStateOf(state.ringLocationId) }
+    Column(
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            if (state.isSetupComplete) "Update the connection and home-presence settings."
+            else "Connect Ring and choose the Wi-Fi network that means you are home.",
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Text("Home presence", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(value = ssid, onValueChange = { ssid = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Home Wi-Fi name (SSID)") }, singleLine = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = requestPermissions) { Text("Permissions") }
+            FilledTonalButton(onClick = useCurrentWifi) { Text("Use current Wi-Fi") }
+        }
+        Text("Reading Wi-Fi requires Precise location permission and Location services.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Ring connection", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(
+            value = refreshToken, onValueChange = { refreshToken = it }, modifier = Modifier.fillMaxWidth(),
+            label = { Text("Ring refresh token") }, supportingText = { Text("Generated with ring-auth-cli; encrypted on this device.") },
+            visualTransformation = PasswordVisualTransformation(), singleLine = true,
+        )
+        OutlinedTextField(
+            value = locationId, onValueChange = { locationId = it }, modifier = Modifier.fillMaxWidth(),
+            label = { Text("Ring location ID (optional)") }, supportingText = { Text("Leave blank to use the first account location.") }, singleLine = true,
+        )
+        Button(
+            onClick = {
+                viewModel.saveHomeWifiSsid(ssid)
+                if (refreshToken.isNotBlank()) {
+                    viewModel.saveRingCredentials(refreshToken, locationId)
+                    refreshToken = ""
+                } else if (locationId != state.ringLocationId) {
+                    viewModel.saveRingLocationId(locationId)
+                }
+                onDone()
+            },
+            enabled = ssid.isNotBlank(), modifier = Modifier.fillMaxWidth(),
+        ) { Text(if (state.isSetupComplete) "Save changes" else "Finish setup") }
+        Spacer(Modifier.height(4.dp))
+        Text("Monitoring continues in the background. Android battery settings may need an exception.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
+
+private fun automationSummary(status: AutomationStatus): String = when (status) {
+    AutomationStatus.Idle -> "Automation ready"
+    is AutomationStatus.Waiting -> "Switching to ${status.desiredMode.displayName()} in ${formatDuration(status.delaySeconds)}"
+    is AutomationStatus.Switching -> "Switching to ${status.desiredMode.displayName()}"
+    is AutomationStatus.Retrying -> "Retry ${status.attempt + 1}/${status.maxAttempts} in ${formatDuration(status.delaySeconds)}"
+    is AutomationStatus.Failed -> "Automation needs attention"
+}
+
+private fun formatDuration(seconds: Long): String = "%d:%02d".format(seconds / 60, seconds % 60)
+
+private fun Enum<*>.displayName(): String = name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase)
