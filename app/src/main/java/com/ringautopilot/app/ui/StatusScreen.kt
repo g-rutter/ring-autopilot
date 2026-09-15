@@ -82,6 +82,12 @@ fun StatusScreen(
                 label = { Text("Home Wi-Fi name (SSID)") },
                 singleLine = true,
             )
+            Text(
+                text = "Use current Wi-Fi needs Android's Precise location permission and " +
+                    "Location services enabled. Notification permission is separate.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             OutlinedTextField(
                 value = refreshToken,
                 onValueChange = { refreshToken = it },
