@@ -19,6 +19,12 @@ sealed interface AutomationStatus {
     data object Idle : AutomationStatus
     data class Waiting(val desiredMode: RingMode, val delaySeconds: Long) : AutomationStatus
     data class Switching(val desiredMode: RingMode) : AutomationStatus
+    data class Retrying(
+        val desiredMode: RingMode,
+        val attempt: Int,
+        val maxAttempts: Int,
+        val delaySeconds: Long,
+    ) : AutomationStatus
     data class Failed(val message: String) : AutomationStatus
 }
 
@@ -83,21 +89,42 @@ class AutomationController(
             return
         }
 
-        mutableStatus.value = AutomationStatus.Switching(desiredMode)
-        ringService.setMode(desiredMode).fold(
-            onSuccess = {
+        val maxAttempts = settingsRepository.settings.value.modeChangeMaxAttempts.coerceAtLeast(1)
+        val initialBackoff = settingsRepository.settings.value.modeChangeInitialBackoffSeconds
+            .coerceAtLeast(1)
+        var lastFailure: Throwable? = null
+
+        repeat(maxAttempts) { index ->
+            val attempt = index + 1
+            mutableStatus.value = AutomationStatus.Switching(desiredMode)
+            ringService.setMode(desiredMode).onSuccess {
                 notificationService.notifyModeChanged(desiredMode)
                 mutableStatus.value = AutomationStatus.Idle
-            },
-            onFailure = {
-                mutableStatus.value = AutomationStatus.Failed(
-                    it.message ?: "Could not change Ring mode",
+                return
+            }.onFailure { lastFailure = it }
+
+            if (attempt < maxAttempts) {
+                val delaySeconds = retryDelaySeconds(initialBackoff, index)
+                mutableStatus.value = AutomationStatus.Retrying(
+                    desiredMode,
+                    attempt,
+                    maxAttempts,
+                    delaySeconds,
                 )
-            },
+                delay(delaySeconds * 1_000)
+            }
+        }
+
+        mutableStatus.value = AutomationStatus.Failed(
+            lastFailure?.message ?: "Could not change Ring mode after $maxAttempts attempts",
         )
     }
 
     companion object {
+        fun retryDelaySeconds(initialBackoffSeconds: Long, attemptIndex: Int): Long =
+            (initialBackoffSeconds.coerceAtLeast(1) * (1L shl attemptIndex.coerceAtMost(6)))
+                .coerceAtMost(300)
+
         fun desiredModeFor(presence: PresenceState): RingMode? = when (presence) {
             PresenceState.HOME -> RingMode.DISARMED
             PresenceState.AWAY -> RingMode.AWAY

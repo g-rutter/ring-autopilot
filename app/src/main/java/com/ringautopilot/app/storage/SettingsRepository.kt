@@ -10,6 +10,7 @@ interface SettingsRepository {
     val settings: StateFlow<AutomationSettings>
 
     fun updateHomeWifiSsid(ssid: String)
+    fun updateRingLocationId(locationId: String)
 }
 
 class PreferencesSettingsRepository(context: Context) : SettingsRepository {
@@ -24,12 +25,20 @@ class PreferencesSettingsRepository(context: Context) : SettingsRepository {
         mutableSettings.value = mutableSettings.value.copy(homeWifiSsid = normalized)
     }
 
+    override fun updateRingLocationId(locationId: String) {
+        val normalized = locationId.trim()
+        preferences.edit().putString(KEY_RING_LOCATION_ID, normalized).apply()
+        mutableSettings.value = mutableSettings.value.copy(ringLocationId = normalized)
+    }
+
     private fun readSettings() = AutomationSettings(
         homeWifiSsid = preferences.getString(KEY_HOME_WIFI_SSID, "").orEmpty(),
+        ringLocationId = preferences.getString(KEY_RING_LOCATION_ID, "").orEmpty(),
     )
 
     private companion object {
         const val PREFERENCES_NAME = "ring_autopilot_settings"
         const val KEY_HOME_WIFI_SSID = "home_wifi_ssid"
+        const val KEY_RING_LOCATION_ID = "ring_location_id"
     }
 }

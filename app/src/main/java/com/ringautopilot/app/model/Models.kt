@@ -16,8 +16,11 @@ enum class RingMode {
 
 data class AutomationSettings(
     val homeWifiSsid: String = "",
+    val ringLocationId: String = "",
     val departureDelaySeconds: Long = 180,
     val arrivalDelaySeconds: Long = 30,
+    val modeChangeMaxAttempts: Int = 4,
+    val modeChangeInitialBackoffSeconds: Long = 5,
     val motionGroupingWindowSeconds: Long = 300,
     val repeatedEventCooldownSeconds: Long = 60,
 )

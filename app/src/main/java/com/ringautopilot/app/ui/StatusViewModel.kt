@@ -12,9 +12,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 data class StatusUiState(
     val homeWifiSsid: String = "",
+    val ringLocationId: String = "",
     val presence: PresenceState = PresenceState.UNKNOWN,
     val ringMode: RingMode = RingMode.UNKNOWN,
     val automationStatus: AutomationStatus = AutomationStatus.Idle,
@@ -37,6 +39,7 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     ) { settings, presence, ringMode, automationStatus ->
         StatusUiState(
             homeWifiSsid = settings.homeWifiSsid,
+            ringLocationId = settings.ringLocationId,
             presence = presence,
             ringMode = ringMode,
             automationStatus = automationStatus,
@@ -47,13 +50,21 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         initialValue = StatusUiState(),
     )
 
-    init {
-        automationController.start()
-    }
+    fun startAutomation() = automationController.start()
+
+    fun stopAutomation() = automationController.stop()
 
     fun saveHomeWifiSsid(ssid: String) {
         container.settingsRepository.updateHomeWifiSsid(ssid)
         container.presenceService.refresh()
+    }
+
+    fun saveRingCredentials(refreshToken: String, locationId: String) {
+        container.settingsRepository.updateRingLocationId(locationId)
+        viewModelScope.launch {
+            container.tokenStore.writeRefreshToken(refreshToken.trim())
+            container.ringService.refreshMode()
+        }
     }
 
     fun refreshPresence() = container.presenceService.refresh()

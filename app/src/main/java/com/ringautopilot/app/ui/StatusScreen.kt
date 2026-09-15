@@ -37,6 +37,8 @@ fun StatusScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var ssid by remember(state.homeWifiSsid) { mutableStateOf(state.homeWifiSsid) }
+    var refreshToken by remember { mutableStateOf("") }
+    var locationId by remember(state.ringLocationId) { mutableStateOf(state.ringLocationId) }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Ring Autopilot") }) },
@@ -62,7 +64,7 @@ fun StatusScreen(
             StatusCard(
                 title = "Ring mode",
                 value = state.ringMode.displayName(),
-                detail = "Ring authentication is the next implementation step.",
+                detail = "Connect Ring credentials to enable automatic mode changes.",
             )
             StatusCard(
                 title = "Automation",
@@ -78,6 +80,22 @@ fun StatusScreen(
                 label = { Text("Home Wi-Fi name (SSID)") },
                 singleLine = true,
             )
+            OutlinedTextField(
+                value = refreshToken,
+                onValueChange = { refreshToken = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Ring refresh token") },
+                supportingText = { Text("Generate with ring-auth-cli; it is encrypted on this device.") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = locationId,
+                onValueChange = { locationId = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Ring location ID (optional)") },
+                supportingText = { Text("Leave blank to use the first location on the account.") },
+                singleLine = true,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = { viewModel.saveHomeWifiSsid(ssid) }) {
                     Text("Save Wi-Fi")
@@ -86,11 +104,17 @@ fun StatusScreen(
                     Text("Grant permissions")
                 }
             }
+            Button(
+                onClick = { viewModel.saveRingCredentials(refreshToken, locationId) },
+                enabled = refreshToken.isNotBlank(),
+            ) {
+                Text("Save Ring credentials")
+            }
 
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "This starter only monitors while the app process is alive. " +
-                    "Background execution must be designed and tested before relying on automation.",
+                text = "Monitoring runs as a foreground service so Android can keep it active " +
+                    "when the app is not open. Battery-saving settings may still need an exception.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -127,5 +151,7 @@ private fun AutomationStatus.displayName(): String = when (this) {
     AutomationStatus.Idle -> "Idle"
     is AutomationStatus.Waiting -> "Waiting ${delaySeconds}s to switch to ${desiredMode.displayName()}"
     is AutomationStatus.Switching -> "Switching to ${desiredMode.displayName()}"
+    is AutomationStatus.Retrying -> "Retrying ${desiredMode.displayName()} " +
+        "(${attempt + 1}/$maxAttempts) in ${delaySeconds}s"
     is AutomationStatus.Failed -> "Needs attention: $message"
 }

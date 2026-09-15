@@ -28,4 +28,11 @@ class AutomationControllerTest {
         assertNull(AutomationController.desiredModeFor(PresenceState.UNKNOWN))
         assertNull(AutomationController.desiredModeFor(PresenceState.NOT_CONFIGURED))
     }
+
+    @Test
+    fun `retry delay backs off and is capped`() {
+        assertEquals(5, AutomationController.retryDelaySeconds(5, 0))
+        assertEquals(20, AutomationController.retryDelaySeconds(5, 2))
+        assertEquals(300, AutomationController.retryDelaySeconds(5, 10))
+    }
 }
