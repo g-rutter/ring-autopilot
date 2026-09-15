@@ -10,6 +10,7 @@ Build a phone-first app that automatically switches Ring between **Away** and **
 - Use phone presence as the trigger. Start with home Wi-Fi connection state and add a short delay so brief Wi-Fi drops do not change Ring mode accidentally.
 - Control Ring through an isolated `RingService` layer. Because the official developer API is not currently suitable for this non-US setup, use the established unofficial/private Ring API route for the first version.
 - Keep presence logic, Ring control, and notification policy separate so any future change in Ring access only affects one part of the app.
+- Target Android. Ring mode changes must use standard retrying with backoff: when leaving home Wi-Fi, mobile data may not be available immediately, so a temporarily failed mode change is an expected connectivity state rather than an exception.
 
 ## Core behaviour
 
@@ -18,6 +19,8 @@ Build a phone-first app that automatically switches Ring between **Away** and **
 | Phone leaves home Wi-Fi and remains away for a short grace period | Set Ring Location Mode to **Away** | Local notification: Ring switched to Away |
 | Phone reconnects to home Wi-Fi and remains connected briefly | Set Ring Location Mode to **Disarmed** | Local notification: Ring switched to Disarmed |
 | Short Wi-Fi dropout | Do nothing unless the away grace period expires | None |
+
+If applying a requested Ring mode change fails because network connectivity is temporarily unavailable, retry automatically with backoff until it succeeds or the configured retry policy is exhausted. This is expected behavior during the transition from home Wi-Fi to mobile data and must not be treated as an exceptional path. Only show the success confirmation after the mode change is confirmed; report a final failure if the retry policy is exhausted.
 
 ### Ring Location Modes
 
@@ -73,4 +76,4 @@ Store tokens securely plus small amounts of state such as current mode, timestam
 
 ## Platform note
 
-The project structure stays the same on Android or iPhone, but the operating-system APIs used for background presence detection and notifications will differ. The implementation can be chosen once the target phone platform is fixed.
+The target platform is Android. Use Android's background networking, Wi-Fi connectivity, and local notification APIs, accounting for Android background-execution and battery-optimization restrictions.
