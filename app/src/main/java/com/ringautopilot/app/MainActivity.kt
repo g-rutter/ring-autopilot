@@ -62,6 +62,7 @@ private fun RingAutopilotApp(container: AppContainer) {
     )
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
+    var lastToast by remember { mutableStateOf<Toast?>(null) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -79,15 +80,24 @@ private fun RingAutopilotApp(container: AppContainer) {
         onResult = { result ->
             viewModel.refreshPresence()
             if (useWifiAfterPermissions) {
-                val locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true
+                val locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
                 val nearbyGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                    result[Manifest.permission.NEARBY_WIFI_DEVICES] == true
+                    result[Manifest.permission.NEARBY_WIFI_DEVICES] == true ||
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.NEARBY_WIFI_DEVICES,
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
                 val message = if (locationGranted && nearbyGranted) {
                     viewModel.useCurrentWifi()
                 } else {
                     "Wi-Fi name access was denied. Allow Precise location and Nearby devices, then try again."
                 }
-                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                lastToast?.cancel()
+                lastToast = Toast.makeText(context, message, Toast.LENGTH_LONG).also { it.show() }
                 useWifiAfterPermissions = false
             }
         },
@@ -99,11 +109,31 @@ private fun RingAutopilotApp(container: AppContainer) {
             launchWifiPermissions(permissionLauncher, includeNotifications = true)
         },
         useCurrentWifi = {
-            useWifiAfterPermissions = true
-            launchWifiPermissions(permissionLauncher, includeNotifications = false)
+            if (hasWifiPermissions(context)) {
+                lastToast?.cancel()
+                lastToast = Toast.makeText(
+                    context,
+                    viewModel.useCurrentWifi(),
+                    Toast.LENGTH_LONG,
+                ).also { it.show() }
+            } else {
+                useWifiAfterPermissions = true
+                launchWifiPermissions(permissionLauncher, includeNotifications = false)
+            }
         },
     )
 }
+
+private fun hasWifiPermissions(context: android.content.Context): Boolean =
+    ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.ACCESS_FINE_LOCATION,
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+        (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.NEARBY_WIFI_DEVICES,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED)
 
 private fun launchWifiPermissions(
     launcher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
