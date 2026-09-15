@@ -85,16 +85,10 @@ private fun RingAutopilotApp(container: AppContainer) {
                         context,
                         Manifest.permission.ACCESS_FINE_LOCATION,
                     ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                val nearbyGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                    result[Manifest.permission.NEARBY_WIFI_DEVICES] == true ||
-                    ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.NEARBY_WIFI_DEVICES,
-                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                val message = if (locationGranted && nearbyGranted) {
+                val message = if (locationGranted) {
                     viewModel.useCurrentWifi()
                 } else {
-                    "Wi-Fi name access was denied. Allow Precise location and Nearby devices, then try again."
+                    "Wi-Fi name access was denied. Allow Precise location, then try again."
                 }
                 lastToast?.cancel()
                 lastToast = Toast.makeText(context, message, Toast.LENGTH_LONG).also { it.show() }
@@ -128,12 +122,7 @@ private fun hasWifiPermissions(context: android.content.Context): Boolean =
     ContextCompat.checkSelfPermission(
         context,
         Manifest.permission.ACCESS_FINE_LOCATION,
-    ) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
-        (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.NEARBY_WIFI_DEVICES,
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
 private fun launchWifiPermissions(
     launcher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
@@ -143,7 +132,6 @@ private fun launchWifiPermissions(
         add(Manifest.permission.ACCESS_COARSE_LOCATION)
         add(Manifest.permission.ACCESS_FINE_LOCATION)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            add(Manifest.permission.NEARBY_WIFI_DEVICES)
             if (includeNotifications) add(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
