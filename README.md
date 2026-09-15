@@ -34,8 +34,11 @@ client; it is encrypted with Android Keystore.
   scenarios.
 - `HttpRingService` implements refresh-token authentication, session bootstrap,
   location discovery, mode endpoints, and event polling through an unofficial
-  private API. It requires live-account verification and must be treated as a
-  replaceable integration.
+  private API. On 2026-09-15, a physical Android device successfully verified
+  authentication/refresh-token persistence, location discovery, current-mode
+  reads, and manual Away/Disarmed mode changes against a live test location.
+  Event polling and automatic Wi-Fi-triggered changes still require live
+  verification; keep this integration replaceable.
 - Settings other than SSID and optional location ID are currently code defaults,
   rather than persisted UI options.
 - Event polling has no durable cursor or deduplication state across foreground
@@ -51,7 +54,8 @@ client; it is encrypted with Android Keystore.
 - [~] Bounded exponential retry/backoff for mode changes (the initial
   mode-read failure still needs retry handling).
 - [x] Keystore-backed encrypted refresh-token storage boundary.
-- [~] Ring authentication and location-mode implementation (requires a real
-  token and live-account verification).
+- [x] Ring authentication, location-mode reads and manual Away/Disarmed changes
+  on a live test location, including refresh-token persistence across a
+  force-stop/relaunch (validated 2026-09-15).
 - [~] Ring event polling and grouped notifications (requires live-account
   verification and restart-safe checkpointing).

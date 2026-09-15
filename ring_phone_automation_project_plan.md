@@ -9,15 +9,18 @@ Build a phone-first app that automatically switches Ring between **Away** and **
 The Android implementation now contains the main app, Wi-Fi presence monitor,
 foreground monitoring service, Ring HTTP client, encrypted refresh-token store,
 mode-change controller, local notifications, and a polling event aggregator.
-The checked-in unit tests passed on 2026-09-15 (6 tests, 0 failures), but no
-live Ring account or physical-device acceptance test has yet been recorded.
+The checked-in unit tests passed on 2026-09-15 (6 tests, 0 failures). On the
+same date, a physical Android device successfully authenticated to a live Ring
+test location, discovered its location ID, read its Away mode, manually switched
+to Away and Disarmed, and re-authenticated after a force-stop/relaunch. Event
+polling and automatic presence transitions have not yet been live-validated.
 
 | Area | Status | Notes |
 |---|---|---|
 | Setup UI and Wi-Fi permission flow | Implemented | Saves an SSID or reads the currently connected SSID after the required Android permission and Location-services checks. |
 | Wi-Fi HOME/AWAY detection and grace periods | Implemented | Defaults are 30 seconds on arrival and 3 minutes on departure. |
 | Background monitoring | Implemented | A foreground service owns monitoring when the activity is not visible. |
-| Ring mode read/change and token storage | Implemented, unverified | Uses an isolated private-API client and Keystore-backed encrypted refresh-token storage. |
+| Ring mode read/change and token storage | Implemented, live-validated | On 2026-09-15, a physical device verified refresh-token authentication/rotation, location discovery, mode reads, manual Away/Disarmed changes, and token persistence across force-stop/relaunch. |
 | Mode-change retry and success notification | Implemented, with a gap | `setMode` retries with bounded exponential backoff; a failed preliminary mode read does not yet retry. |
 | Event polling, grouping, and notification | Implemented, unverified | Doorbells notify immediately; other events are polled and summarized. Poll progress and deduplication do not survive a service restart. |
 | User-configurable settings | Partial | Only SSID and optional location ID are persisted through the UI; other values currently use code defaults. |
@@ -78,7 +81,7 @@ Store tokens securely plus small amounts of state such as current mode, timestam
 ## Build order
 
 1. [x] Create the basic mobile app and a status/setup screen.
-2. [~] Implement Ring authentication and `RingService`. The client is present, but real-account verification and manual Away/Disarmed controls are still required.
+2. [~] Implement Ring authentication and `RingService`. A physical-device test verified authentication, location discovery, current-mode reads, manual Away/Disarmed controls, and refresh-token persistence on 2026-09-15; live event polling and automatic mode transitions remain.
 3. [x] Add home Wi-Fi presence detection with an away grace period and a shorter arrival confirmation period.
 4. [~] Connect presence changes to Ring mode changes and show a local notification after each successful automatic switch. The flow is implemented; it still needs device and live-account validation.
 5. [~] Add Ring event intake and notification grouping/throttling. Polling and aggregation are implemented; restart-safe intake and live verification remain.
@@ -86,11 +89,12 @@ Store tokens securely plus small amounts of state such as current mode, timestam
 
 ## Remaining release work
 
-1. Validate the private Ring integration on a non-production/test location:
-   refresh-token authentication and rotation, location discovery, reading the
-   current mode, switching to Away and Disarmed, and polling each supported
-   event type. The private API is not stable or supported, so this is the
-   release gate with the highest risk.
+1. Continue validating the private Ring integration on a non-production/test
+   location: refresh-token authentication/rotation, location discovery, current
+   mode reads, manual Away/Disarmed changes, and token persistence were verified
+   on a physical device on 2026-09-15. Poll each supported event type, including
+   person detection. The private API is not stable or supported, so this remains
+   the release gate with the highest risk.
 2. Retry the entire mode transition, including a transient `refreshMode()`
    failure, and display a final actionable failure state after the retry budget
    is exhausted.

@@ -29,6 +29,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ringautopilot.app.automation.AutomationStatus
+import com.ringautopilot.app.model.RingMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +73,41 @@ fun StatusScreen(
                 title = "Automation",
                 value = state.automationStatus.displayName(),
                 detail = "Away delay: 3 min · Arrival delay: 30 sec",
+            )
+
+            Text("Ring validation", style = MaterialTheme.typography.titleLarge)
+            StatusCard(
+                title = "Last Ring operation",
+                value = state.ringValidationMessage,
+                detail = "Selected location: ${state.ringLocationId.ifBlank { "Will be discovered when Ring is checked" }}",
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = viewModel::refreshRingMode,
+                    enabled = !state.ringOperationInProgress,
+                ) {
+                    Text("Check Ring mode")
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = { viewModel.setRingMode(RingMode.AWAY) },
+                    enabled = !state.ringOperationInProgress,
+                ) {
+                    Text("Set Away")
+                }
+                Button(
+                    onClick = { viewModel.setRingMode(RingMode.DISARMED) },
+                    enabled = !state.ringOperationInProgress,
+                ) {
+                    Text("Set Disarmed")
+                }
+            }
+            Text(
+                text = "Manual actions change the selected Ring location immediately. " +
+                    "Automatic presence monitoring is still active and can later apply its own mode after its delay.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             Text("Setup", style = MaterialTheme.typography.titleLarge)

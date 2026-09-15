@@ -8,6 +8,7 @@ import com.ringautopilot.app.automation.AutomationController
 import com.ringautopilot.app.automation.AutomationStatus
 import com.ringautopilot.app.model.PresenceState
 import com.ringautopilot.app.model.RingMode
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -20,6 +21,8 @@ data class StatusUiState(
     val presence: PresenceState = PresenceState.UNKNOWN,
     val ringMode: RingMode = RingMode.UNKNOWN,
     val automationStatus: AutomationStatus = AutomationStatus.Idle,
+    val ringValidationMessage: String = "Not yet checked",
+    val ringOperationInProgress: Boolean = false,
 )
 
 class StatusViewModel(private val container: AppContainer) : ViewModel() {
@@ -30,19 +33,23 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         settingsRepository = container.settingsRepository,
         notificationService = container.notificationService,
     )
+    private val mutableRingValidation = MutableStateFlow(RingValidationState())
 
     val uiState: StateFlow<StatusUiState> = combine(
         container.settingsRepository.settings,
         container.presenceService.presence,
         container.ringService.mode,
         automationController.status,
-    ) { settings, presence, ringMode, automationStatus ->
+        mutableRingValidation,
+    ) { settings, presence, ringMode, automationStatus, validation ->
         StatusUiState(
             homeWifiSsid = settings.homeWifiSsid,
             ringLocationId = settings.ringLocationId,
             presence = presence,
             ringMode = ringMode,
             automationStatus = automationStatus,
+            ringValidationMessage = validation.message,
+            ringOperationInProgress = validation.inProgress,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -70,7 +77,42 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         container.settingsRepository.updateRingLocationId(locationId)
         viewModelScope.launch {
             container.tokenStore.writeRefreshToken(refreshToken.trim())
+            refreshRingMode()
+        }
+    }
+
+    fun refreshRingMode() {
+        viewModelScope.launch {
+            mutableRingValidation.value = RingValidationState("Checking Ring credentials and current mode…", true)
             container.ringService.refreshMode()
+                .onSuccess { mode ->
+                    mutableRingValidation.value = RingValidationState(
+                        "Connected. Ring reports ${mode.displayName()}.",
+                    )
+                }
+                .onFailure { error ->
+                    mutableRingValidation.value = RingValidationState(
+                        "Could not read Ring mode: ${error.userMessage()}",
+                    )
+                }
+        }
+    }
+
+    fun setRingMode(mode: RingMode) {
+        require(mode == RingMode.AWAY || mode == RingMode.DISARMED)
+        viewModelScope.launch {
+            mutableRingValidation.value = RingValidationState("Requesting ${mode.displayName()}…", true)
+            container.ringService.setMode(mode)
+                .onSuccess {
+                    mutableRingValidation.value = RingValidationState(
+                        "Ring confirmed ${mode.displayName()}.",
+                    )
+                }
+                .onFailure { error ->
+                    mutableRingValidation.value = RingValidationState(
+                        "Could not switch to ${mode.displayName()}: ${error.userMessage()}",
+                    )
+                }
         }
     }
 
@@ -81,6 +123,19 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         super.onCleared()
     }
 }
+
+private data class RingValidationState(
+    val message: String = "Not yet checked",
+    val inProgress: Boolean = false,
+)
+
+private fun RingMode.displayName(): String =
+    name.lowercase().replaceFirstChar(Char::uppercase)
+
+private fun Throwable.userMessage(): String =
+    (message ?: "Unknown error")
+        .replace(Regex("[\\r\\n]+"), " ")
+        .take(180)
 
 class StatusViewModelFactory(
     private val container: AppContainer,
