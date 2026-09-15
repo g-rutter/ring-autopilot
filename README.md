@@ -6,7 +6,8 @@ Android starting point for the phone-first Ring mode automation described in
 ## Open in Android Studio
 
 1. Open this directory as an existing project.
-2. Let Android Studio use its bundled JDK 17 and sync Gradle.
+2. Let Android Studio use its bundled JDK and sync Gradle. See
+   [`AGENTS.md`](AGENTS.md) for the verified command-line test setup.
 3. Install Android SDK 37 if Android Studio prompts for it.
 4. Run the `app` configuration on an Android 9 (API 28) or newer device.
 
@@ -19,30 +20,38 @@ client; it is encrypted with Android Keystore.
 ## Source layout
 
 - `presence/` — Android Wi-Fi presence detection.
-- `ring/` — isolated Ring API contract and unconfigured first implementation.
+- `ring/` — isolated Ring API contract, private HTTP client, and event polling.
 - `automation/` — grace-period controller and mode-switch decisions.
 - `events/` — event grouping and bypass policy.
 - `notifications/` — local mode-change notifications.
-- `storage/` — settings plus the contract for future encrypted token storage.
+- `storage/` — settings and Keystore-backed encrypted refresh-token storage.
 - `ui/` — Compose status screen and view model.
 
-## Important platform work still to do
+## Current limitations and next work
 
-- Add an explicit permission/onboarding flow before relying on SSID access.
-- Test the foreground service against the target phone's battery restrictions;
-  the user may need to exempt Ring Autopilot from battery optimization.
-- The native `HttpRingService` implements refresh-token authentication, session
-  bootstrap, location discovery, and Away/Disarmed mode endpoints.
-- `EncryptedTokenStore` stores Ring refresh tokens with Android Keystore-backed
-  AES/GCM encryption and saves rotated tokens.
-- Connect Ring's event stream to `EventAggregator` and schedule summary alerts.
+- The permission/onboarding flow is implemented, but must be exercised on a
+  physical target phone, including Location services and battery-optimization
+  scenarios.
+- `HttpRingService` implements refresh-token authentication, session bootstrap,
+  location discovery, mode endpoints, and event polling through an unofficial
+  private API. It requires live-account verification and must be treated as a
+  replaceable integration.
+- Settings other than SSID and optional location ID are currently code defaults,
+  rather than persisted UI options.
+- Event polling has no durable cursor or deduplication state across foreground
+  service restarts.
+- The complete prioritized roadmap is in
+  [`ring_phone_automation_project_plan.md`](ring_phone_automation_project_plan.md).
 
 ## V1 acceptance checklist
 
 - [x] Home Wi-Fi SSID setup and permission request.
 - [x] Delayed HOME/AWAY decisions.
 - [x] Foreground monitoring service for background execution.
-- [x] Bounded exponential retry/backoff for mode changes.
+- [~] Bounded exponential retry/backoff for mode changes (the initial
+  mode-read failure still needs retry handling).
 - [x] Keystore-backed encrypted refresh-token storage boundary.
-- [x] Ring authentication and location-mode implementation (requires a real token to verify).
-- [x] Ring event polling and grouped notifications (requires live-account verification).
+- [~] Ring authentication and location-mode implementation (requires a real
+  token and live-account verification).
+- [~] Ring event polling and grouped notifications (requires live-account
+  verification and restart-safe checkpointing).
