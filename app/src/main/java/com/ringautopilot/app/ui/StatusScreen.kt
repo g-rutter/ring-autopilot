@@ -19,6 +19,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -33,6 +36,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ringautopilot.app.automation.AutomationStatus
+import com.ringautopilot.app.model.ControlMode
 import com.ringautopilot.app.model.RingMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,23 +90,22 @@ private fun DashboardPage(state: StatusUiState, viewModel: StatusViewModel, modi
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = { viewModel.setRingMode(RingMode.AWAY) }, enabled = !state.ringOperationInProgress) {
-                Text("Away")
-            }
-            FilledTonalButton(onClick = { viewModel.setRingMode(RingMode.DISARMED) }, enabled = !state.ringOperationInProgress) {
-                Text("Disarm")
-            }
-            OutlinedButton(onClick = viewModel::refreshRingMode, enabled = !state.ringOperationInProgress) {
-                Text("Check")
+        Text("Control mode", style = MaterialTheme.typography.titleSmall)
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            ControlMode.entries.forEachIndexed { index, mode ->
+                SegmentedButton(
+                    selected = state.controlMode == mode,
+                    onClick = { viewModel.selectControlMode(mode) },
+                    shape = SegmentedButtonDefaults.itemShape(
+                        index = index,
+                        count = ControlMode.entries.size,
+                    ),
+                    enabled = !state.ringOperationInProgress,
+                    label = { Text(mode.controlLabel()) },
+                )
             }
         }
-        Text(state.ringValidationMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(
-            "Automatic changes use your home Wi-Fi after the safety delay.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        OutlinedButton(onClick = viewModel::refreshRingMode, enabled = !state.ringOperationInProgress) { Text("Check Ring") }
     }
 }
 
@@ -182,6 +185,7 @@ private fun SetupPage(
 
 private fun automationSummary(status: AutomationStatus): String = when (status) {
     AutomationStatus.Idle -> "Automation ready"
+    is AutomationStatus.ManualOverride -> "Manual ${status.mode.controlLabel()} override"
     is AutomationStatus.Waiting -> "Switching to ${status.desiredMode.displayName()} in ${formatDuration(status.delaySeconds)}"
     is AutomationStatus.Switching -> "Switching to ${status.desiredMode.displayName()}"
     is AutomationStatus.Retrying -> "Retry ${status.attempt + 1}/${status.maxAttempts} in ${formatDuration(status.delaySeconds)}"
@@ -191,3 +195,9 @@ private fun automationSummary(status: AutomationStatus): String = when (status) 
 private fun formatDuration(seconds: Long): String = "%d:%02d".format(seconds / 60, seconds % 60)
 
 private fun Enum<*>.displayName(): String = name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase)
+
+private fun ControlMode.controlLabel(): String = when (this) {
+    ControlMode.AUTO -> "Auto"
+    ControlMode.AWAY -> "Away"
+    ControlMode.DISARMED -> "Disarm"
+}

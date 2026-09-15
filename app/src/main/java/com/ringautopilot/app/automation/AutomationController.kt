@@ -1,6 +1,7 @@
 package com.ringautopilot.app.automation
 
 import com.ringautopilot.app.model.PresenceState
+import com.ringautopilot.app.model.ControlMode
 import com.ringautopilot.app.model.RingMode
 import com.ringautopilot.app.notifications.NotificationService
 import com.ringautopilot.app.presence.PresenceService
@@ -13,10 +14,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 sealed interface AutomationStatus {
     data object Idle : AutomationStatus
+    data class ManualOverride(val mode: ControlMode) : AutomationStatus
     data class Waiting(val desiredMode: RingMode, val delaySeconds: Long) : AutomationStatus
     data class Switching(val desiredMode: RingMode) : AutomationStatus
     data class Retrying(
@@ -45,7 +48,11 @@ class AutomationController(
         if (observationJob != null) return
         presenceService.start()
         observationJob = scope.launch {
-            presenceService.presence.collectLatest(::onPresenceChanged)
+            combine(settingsRepository.settings, presenceService.presence) { settings, presence ->
+                settings to presence
+            }.collectLatest { (settings, presence) ->
+                onStateChanged(settings.controlMode, presence)
+            }
         }
     }
 
@@ -57,9 +64,14 @@ class AutomationController(
         presenceService.stop()
     }
 
-    private fun onPresenceChanged(presence: PresenceState) {
+    private fun onStateChanged(controlMode: ControlMode, presence: PresenceState) {
         transitionJob?.cancel()
         transitionJob = null
+
+        if (controlMode != ControlMode.AUTO) {
+            mutableStatus.value = AutomationStatus.ManualOverride(controlMode)
+            return
+        }
 
         val settings = settingsRepository.settings.value
         val desiredMode = desiredModeFor(presence) ?: run {

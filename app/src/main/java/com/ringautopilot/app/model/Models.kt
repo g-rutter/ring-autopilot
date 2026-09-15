@@ -14,9 +14,17 @@ enum class RingMode {
     DISARMED,
 }
 
+/** The selected operating mode for Ring, rather than Ring's reported current state. */
+enum class ControlMode {
+    AUTO,
+    AWAY,
+    DISARMED,
+}
+
 data class AutomationSettings(
     val homeWifiSsid: String = "",
     val ringLocationId: String = "",
+    val controlMode: ControlMode = ControlMode.AUTO,
     val departureDelaySeconds: Long = 180,
     val arrivalDelaySeconds: Long = 30,
     val modeChangeMaxAttempts: Int = 4,

@@ -7,6 +7,7 @@ import com.ringautopilot.app.AppContainer
 import com.ringautopilot.app.automation.AutomationController
 import com.ringautopilot.app.automation.AutomationStatus
 import com.ringautopilot.app.model.PresenceState
+import com.ringautopilot.app.model.ControlMode
 import com.ringautopilot.app.model.RingMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,6 +22,7 @@ data class StatusUiState(
     val ringLocationId: String = "",
     val presence: PresenceState = PresenceState.UNKNOWN,
     val ringMode: RingMode = RingMode.UNKNOWN,
+    val controlMode: ControlMode = ControlMode.AUTO,
     val automationStatus: AutomationStatus = AutomationStatus.Idle,
     val ringValidationMessage: String = "Not yet checked",
     val ringOperationInProgress: Boolean = false,
@@ -50,6 +52,7 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
             ringLocationId = settings.ringLocationId,
             presence = presence,
             ringMode = ringMode,
+            controlMode = settings.controlMode,
             automationStatus = automationStatus,
             ringValidationMessage = validation.message,
             ringOperationInProgress = validation.inProgress,
@@ -107,19 +110,29 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    fun setRingMode(mode: RingMode) {
-        require(mode == RingMode.AWAY || mode == RingMode.DISARMED)
+    fun selectControlMode(mode: ControlMode) {
+        if (container.settingsRepository.settings.value.controlMode == mode) return
+        container.settingsRepository.updateControlMode(mode)
+        if (mode == ControlMode.AUTO) {
+            mutableRingValidation.value = RingValidationState("Automatic changes are enabled.")
+            return
+        }
+        val ringMode = when (mode) {
+            ControlMode.AWAY -> RingMode.AWAY
+            ControlMode.DISARMED -> RingMode.DISARMED
+            ControlMode.AUTO -> error("Auto mode does not select a Ring mode")
+        }
         viewModelScope.launch {
-            mutableRingValidation.value = RingValidationState("Requesting ${mode.displayName()}…", true)
-            container.ringService.setMode(mode)
+            mutableRingValidation.value = RingValidationState("Requesting ${ringMode.displayName()}…", true)
+            container.ringService.setMode(ringMode)
                 .onSuccess {
                     mutableRingValidation.value = RingValidationState(
-                        "Ring confirmed ${mode.displayName()}.",
+                        "Ring confirmed ${ringMode.displayName()}. Automatic changes are off.",
                     )
                 }
                 .onFailure { error ->
                     mutableRingValidation.value = RingValidationState(
-                        "Could not switch to ${mode.displayName()}: ${error.userMessage()}",
+                        "Could not switch to ${ringMode.displayName()}: ${error.userMessage()}",
                         connectionFailed = true,
                     )
                 }

@@ -2,6 +2,7 @@ package com.ringautopilot.app.storage
 
 import android.content.Context
 import com.ringautopilot.app.model.AutomationSettings
+import com.ringautopilot.app.model.ControlMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,6 +12,7 @@ interface SettingsRepository {
 
     fun updateHomeWifiSsid(ssid: String)
     fun updateRingLocationId(locationId: String)
+    fun updateControlMode(mode: ControlMode)
 }
 
 class PreferencesSettingsRepository(context: Context) : SettingsRepository {
@@ -31,14 +33,23 @@ class PreferencesSettingsRepository(context: Context) : SettingsRepository {
         mutableSettings.value = mutableSettings.value.copy(ringLocationId = normalized)
     }
 
+    override fun updateControlMode(mode: ControlMode) {
+        preferences.edit().putString(KEY_CONTROL_MODE, mode.name).apply()
+        mutableSettings.value = mutableSettings.value.copy(controlMode = mode)
+    }
+
     private fun readSettings() = AutomationSettings(
         homeWifiSsid = preferences.getString(KEY_HOME_WIFI_SSID, "").orEmpty(),
         ringLocationId = preferences.getString(KEY_RING_LOCATION_ID, "").orEmpty(),
+        controlMode = preferences.getString(KEY_CONTROL_MODE, null)
+            ?.let { saved -> ControlMode.entries.firstOrNull { it.name == saved } }
+            ?: ControlMode.AUTO,
     )
 
     private companion object {
         const val PREFERENCES_NAME = "ring_autopilot_settings"
         const val KEY_HOME_WIFI_SSID = "home_wifi_ssid"
         const val KEY_RING_LOCATION_ID = "ring_location_id"
+        const val KEY_CONTROL_MODE = "control_mode"
     }
 }
