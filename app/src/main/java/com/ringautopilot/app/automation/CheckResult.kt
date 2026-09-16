@@ -4,15 +4,12 @@ import com.ringautopilot.app.model.PresenceState
 
 data class CheckResult(val summary: String, val problem: Boolean)
 
-fun checkResult(presence: PresenceState, status: AutomationStatus, origin: CheckOrigin): CheckResult = when {
-    status is AutomationStatus.Failed -> CheckResult("${origin.label()} failed: ${status.message}", true)
+fun checkResult(presence: PresenceState, status: AutomationStatus): CheckResult = when {
+    status is AutomationStatus.Failed -> CheckResult("Apply auto failed: ${status.message}", true)
     presence == PresenceState.UNKNOWN || presence == PresenceState.NOT_CONFIGURED ->
-        CheckResult("${origin.label()} · Wi-Fi unavailable", true)
-    presence == PresenceState.HOME -> CheckResult("${origin.label()} · Home", false)
-    else -> CheckResult("${origin.label()} · Away", false)
-}
-
-private fun CheckOrigin.label(): String = when (this) {
-    CheckOrigin.AUTOMATIC -> "Wi-Fi automation"
-    CheckOrigin.MANUAL_APPLY -> "Apply Wi-Fi mode"
+        CheckResult("Wi-Fi unavailable", false)
+    status is AutomationStatus.Waiting -> CheckResult("Apply auto · Waiting", false)
+    status is AutomationStatus.Retrying -> CheckResult("Apply auto · Retrying", false)
+    status is AutomationStatus.Switching -> CheckResult("Apply auto · Switching", false)
+    else -> CheckResult("Apply auto · Confirmed", false)
 }

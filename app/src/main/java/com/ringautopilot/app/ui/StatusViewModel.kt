@@ -48,7 +48,7 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
                 container.appContext, delayMillis, replace)
         },
         onCheckFinished = { presence, status, origin ->
-            val result = checkResult(presence, status, origin)
+            val result = checkResult(presence, status)
             container.statusStore.saveCheck(result.summary, result.problem,
                 automated = origin == CheckOrigin.AUTOMATIC)
             RingWidgetProvider.updateAll(container.appContext)

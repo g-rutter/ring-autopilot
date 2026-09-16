@@ -35,7 +35,7 @@ class MonitoringWorker(
                 MonitoringWorkScheduler.schedulePending(applicationContext, delayMillis, replace)
             },
             onCheckFinished = { presence, status, origin ->
-                val result = checkResult(presence, status, origin)
+                val result = checkResult(presence, status)
                 container.statusStore.saveCheck(result.summary, result.problem,
                     automated = origin == CheckOrigin.AUTOMATIC)
                 RingWidgetProvider.updateAll(applicationContext)

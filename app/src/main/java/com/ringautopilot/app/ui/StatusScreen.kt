@@ -162,7 +162,7 @@ private fun DashboardPage(
                     Text("RECENT ACTIVITY", style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f))
-                    TextButton(onClick = viewModel::refreshRingMode,
+                    FilledTonalButton(onClick = viewModel::refreshRingMode,
                         enabled = !state.ringOperationInProgress,
                         contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Refresh Ring status") }
                 }
