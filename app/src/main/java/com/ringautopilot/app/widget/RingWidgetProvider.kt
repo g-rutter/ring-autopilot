@@ -62,7 +62,6 @@ class RingWidgetProvider : AppWidgetProvider() {
                 val open = PendingIntent.getActivity(context, id,
                     Intent(context, MainActivity::class.java),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-                setOnClickPendingIntent(R.id.widget_root, open)
                 setOnClickPendingIntent(R.id.widget_open, open)
             }
         }
