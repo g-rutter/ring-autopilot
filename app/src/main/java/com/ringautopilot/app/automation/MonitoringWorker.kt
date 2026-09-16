@@ -9,6 +9,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.Constraints
 import com.ringautopilot.app.AppContainer
+import com.ringautopilot.app.automation.CheckOrigin
 import com.ringautopilot.app.widget.RingWidgetProvider
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -27,9 +28,10 @@ class MonitoringWorker(
             ringService = container.ringService,
             settingsRepository = container.settingsRepository,
             notificationService = container.notificationService,
-            onCheckFinished = { presence, status ->
-                val result = checkResult(presence, status)
-                container.statusStore.saveCheck(result.summary, result.problem)
+            onCheckFinished = { presence, status, origin ->
+                val result = checkResult(presence, status, origin)
+                container.statusStore.saveCheck(result.summary, result.problem,
+                    automated = origin == CheckOrigin.AUTOMATIC)
                 RingWidgetProvider.updateAll(applicationContext)
             },
         )
@@ -42,7 +44,8 @@ class MonitoringWorker(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            container.statusStore.saveCheck("Check failed: ${error.message ?: "Unknown error"}", true)
+            container.statusStore.saveCheck("Wi-Fi automation failed: ${error.message ?: "Unknown error"}", true,
+                automated = true)
             RingWidgetProvider.updateAll(applicationContext)
             Result.retry()
         } finally {

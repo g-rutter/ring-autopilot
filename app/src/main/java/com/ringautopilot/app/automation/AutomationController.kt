@@ -31,13 +31,15 @@ sealed interface AutomationStatus {
     data class Failed(val message: String) : AutomationStatus
 }
 
+enum class CheckOrigin { AUTOMATIC, MANUAL_APPLY }
+
 class AutomationController(
     private val scope: CoroutineScope,
     private val presenceService: PresenceService,
     private val ringService: RingService,
     private val settingsRepository: SettingsRepository,
     private val notificationService: NotificationService,
-    private val onCheckFinished: (PresenceState, AutomationStatus) -> Unit = { _, _ -> },
+    private val onCheckFinished: (PresenceState, AutomationStatus, CheckOrigin) -> Unit = { _, _, _ -> },
 ) {
     private val mutableStatus = MutableStateFlow<AutomationStatus>(AutomationStatus.Idle)
     private var transitionJob: Job? = null
@@ -71,7 +73,7 @@ class AutomationController(
         val presence = presenceService.presence.value
         runAutomation(settingsRepository.settings.value, presence)
         if (settingsRepository.settings.value.controlMode == ControlMode.AUTO) {
-            onCheckFinished(presence, mutableStatus.value)
+            onCheckFinished(presence, mutableStatus.value, CheckOrigin.AUTOMATIC)
         }
     }
 
@@ -89,12 +91,11 @@ class AutomationController(
             presenceService.refresh()
             val desiredMode = desiredModeFor(presenceService.presence.value) ?: run {
                 mutableStatus.value = AutomationStatus.Idle
+                onCheckFinished(presenceService.presence.value, mutableStatus.value, CheckOrigin.MANUAL_APPLY)
                 return@launch
             }
             switchIfNeeded(desiredMode)
-            if (settingsRepository.settings.value.controlMode == ControlMode.AUTO) {
-                onCheckFinished(presenceService.presence.value, mutableStatus.value)
-            }
+            onCheckFinished(presenceService.presence.value, mutableStatus.value, CheckOrigin.MANUAL_APPLY)
         }
     }
 
@@ -105,7 +106,7 @@ class AutomationController(
         transitionJob = scope.launch {
             runAutomation(settingsRepository.settings.value, presence)
             if (settingsRepository.settings.value.controlMode == ControlMode.AUTO) {
-                onCheckFinished(presence, mutableStatus.value)
+                onCheckFinished(presence, mutableStatus.value, CheckOrigin.AUTOMATIC)
             }
         }
     }

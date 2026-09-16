@@ -124,25 +124,35 @@ private fun DashboardPage(state: StatusUiState, viewModel: StatusViewModel, modi
                 if (activity != null) Text(activity, style = MaterialTheme.typography.bodySmall,
                     color = if (state.automationStatus is AutomationStatus.Failed) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant)
-                val check = state.lastCheck
+                val check = state.lastAutomationCheck
                 HorizontalDivider()
-                Text("Last automated check", style = MaterialTheme.typography.titleSmall)
-                Text(check?.summary ?: "No checks yet", style = MaterialTheme.typography.bodyMedium,
+                Text("Last Wi-Fi automation", style = MaterialTheme.typography.titleSmall)
+                Text(check?.summary ?: "No runs yet", style = MaterialTheme.typography.bodyMedium,
                     color = if (check?.problem == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 if (check != null) Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
                     .format(Date(check.timeMillis)), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val latest = state.lastCheck
+                if (latest != null && latest.timeMillis != check?.timeMillis) {
+                    HorizontalDivider()
+                    Text("Last manual action", style = MaterialTheme.typography.titleSmall)
+                    Text(latest.summary, style = MaterialTheme.typography.bodyMedium,
+                        color = if (latest.problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                    Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                        .format(Date(latest.timeMillis)), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             FilledTonalButton(
                 onClick = viewModel::syncNow,
                 enabled = !state.ringOperationInProgress,
-            ) { Text("Sync now") }
+            ) { Text("Apply Wi-Fi mode") }
             OutlinedButton(
                 onClick = viewModel::refreshRingMode,
                 enabled = !state.ringOperationInProgress,
-            ) { Text("Check Ring") }
+            ) { Text("Refresh Ring status") }
         }
         state.ringValidationMessage?.let { message ->
             Text(
@@ -172,7 +182,7 @@ private fun ModeHero(state: StatusUiState) {
         Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("CAMERAS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
             Text(headline, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-            Text(if (state.ringConnectionFailed) "Check Ring connection" else "Current Ring mode",
+            Text(if (state.ringConnectionFailed) "Ring connection unavailable" else "Current Ring mode",
                 style = MaterialTheme.typography.bodySmall)
         }
     }
@@ -230,7 +240,7 @@ private fun SetupPage(
             enabled = ssid.isNotBlank(), modifier = Modifier.fillMaxWidth(),
         ) { Text(if (state.isSetupComplete) "Save changes" else "Finish setup") }
         Spacer(Modifier.height(4.dp))
-        Text("Monitoring runs periodically in the background. Android may defer checks to preserve battery.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Wi-Fi automation runs periodically. Android may defer it to preserve battery.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

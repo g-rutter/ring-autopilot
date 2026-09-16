@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.ringautopilot.app.AppContainer
 import com.ringautopilot.app.automation.AutomationController
 import com.ringautopilot.app.automation.AutomationStatus
+import com.ringautopilot.app.automation.CheckOrigin
 import com.ringautopilot.app.automation.checkResult
 import com.ringautopilot.app.model.ControlMode
 import com.ringautopilot.app.model.PresenceState
@@ -31,6 +32,7 @@ data class StatusUiState(
     val ringOperationInProgress: Boolean = false,
     val ringConnectionFailed: Boolean = false,
     val lastCheck: LastCheck? = null,
+    val lastAutomationCheck: LastCheck? = null,
 )
 
 class StatusViewModel(private val container: AppContainer) : ViewModel() {
@@ -40,9 +42,10 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         ringService = container.ringService,
         settingsRepository = container.settingsRepository,
         notificationService = container.notificationService,
-        onCheckFinished = { presence, status ->
-            val result = checkResult(presence, status)
-            container.statusStore.saveCheck(result.summary, result.problem)
+        onCheckFinished = { presence, status, origin ->
+            val result = checkResult(presence, status, origin)
+            container.statusStore.saveCheck(result.summary, result.problem,
+                automated = origin == CheckOrigin.AUTOMATIC)
             RingWidgetProvider.updateAll(container.appContext)
         },
     )
@@ -80,8 +83,10 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         )
     }
 
-    val uiState: StateFlow<StatusUiState> = combine(baseState, container.statusStore.observeLastCheck()) { state, check ->
-        state.copy(lastCheck = check)
+    val uiState: StateFlow<StatusUiState> = combine(
+        baseState, container.statusStore.observeLastCheck(), container.statusStore.observeLastAutomationCheck(),
+    ) { state, check, automationCheck ->
+        state.copy(lastCheck = check, lastAutomationCheck = automationCheck)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -118,12 +123,15 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
             container.ringService.refreshMode()
                 .onSuccess { mode ->
                     container.statusStore.saveCameraMode(mode)
+                    container.statusStore.saveCheck("Ring status · ${mode.displayName()}", false)
                     RingWidgetProvider.updateAll(container.appContext)
                     mutableRingValidation.value = RingValidationState(
                         "Connected. Ring reports ${mode.displayName()}.",
                     )
                 }
                 .onFailure { error ->
+                    container.statusStore.saveCheck("Ring status unavailable", true)
+                    RingWidgetProvider.updateAll(container.appContext)
                     mutableRingValidation.value = RingValidationState(
                         "Could not read Ring mode: ${error.userMessage()}",
                         connectionFailed = true,
