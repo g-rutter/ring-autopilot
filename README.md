@@ -63,8 +63,8 @@ The following Auto-mode values are fixed code defaults, rather than settings:
 
 | Setting | Default |
 |---|---:|
-| Arrival delay | 30 seconds |
-| Departure delay | 180 seconds |
+| Arrival delay | 1 second |
+| Departure delay | 30 seconds |
 | Mode-change attempts | 4 |
 | Initial retry backoff | 5 seconds |
 
