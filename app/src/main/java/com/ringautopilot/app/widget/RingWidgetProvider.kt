@@ -55,7 +55,7 @@ class RingWidgetProvider : AppWidgetProvider() {
                     mode != ControlMode.AUTO && camera != RingMode.UNKNOWN -> "Ready"
                     else -> "Pending"
                 })
-                setInt(R.id.widget_health, "setTextColor", if (check?.problem == true) 0xFFFFB4A9.toInt() else 0xFFD4DFE9.toInt())
+                setInt(R.id.widget_health, "setTextColor", if (check?.problem == true) 0xFFFFB4A9.toInt() else 0xFFFFF7F0.toInt())
                 setTextViewText(R.id.widget_check_time, check?.let {
                     SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(Date(it.timeMillis))
                 } ?: "No checks")

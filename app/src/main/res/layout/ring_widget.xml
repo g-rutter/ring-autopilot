@@ -29,7 +29,7 @@
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="HEALTH" android:textColor="#89DDFB" android:textSize="9sp" android:textStyle="bold" />
         <TextView android:id="@+id/widget_health" android:layout_width="wrap_content"
-            android:layout_height="wrap_content" android:text="Pending" android:textColor="#D4DFE9"
+            android:layout_height="wrap_content" android:text="Pending" android:textColor="#FFF7F0"
             android:textSize="14sp" android:textStyle="bold" android:maxLines="1" />
         <TextView android:id="@+id/widget_check_time" android:layout_width="wrap_content"
             android:layout_height="wrap_content" android:text="No checks" android:textColor="#D4DFE9"
