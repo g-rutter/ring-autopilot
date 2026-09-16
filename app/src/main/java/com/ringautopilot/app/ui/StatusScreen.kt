@@ -96,8 +96,8 @@ private fun DashboardPage(
     modifier: Modifier,
 ) {
     Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         ModeHero(state)
         if (state.controlMode == ControlMode.AUTO && !backgroundLocationGranted) {
@@ -108,7 +108,7 @@ private fun DashboardPage(
         }
         Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface,
             tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("CONTROL", style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -135,14 +135,6 @@ private fun DashboardPage(
                         Text("Apply auto\nnow", textAlign = TextAlign.Center)
                     }
                 }
-            }
-        }
-        Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("AUTOMATION", style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                Text(homeStatus(state), style = MaterialTheme.typography.bodyMedium)
                 val pending = state.automationStatus as? AutomationStatus.Waiting
                 if (state.controlMode == ControlMode.AUTO && pending != null) {
                     Text("Switching to ${pending.desiredMode.displayName()} in ${formatDuration(pending.delaySeconds)}",
@@ -157,36 +149,49 @@ private fun DashboardPage(
                 if (activity != null) Text(activity, style = MaterialTheme.typography.bodySmall,
                     color = if (state.automationStatus is AutomationStatus.Failed) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant)
-                val check = state.lastAutomationCheck
-                HorizontalDivider()
-                Text("Last Wi-Fi automation", style = MaterialTheme.typography.titleSmall)
-                Text(check?.summary ?: "No runs yet", style = MaterialTheme.typography.bodyMedium,
-                    color = if (check?.problem == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-                if (check != null) Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-                    .format(Date(check.timeMillis)), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                val latest = state.lastManualCheck
-                if (latest != null) {
-                    HorizontalDivider()
-                    Text("Last manual action", style = MaterialTheme.typography.titleSmall)
-                    Text(latest.summary, style = MaterialTheme.typography.bodyMedium,
-                        color = if (latest.problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-                    Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-                        .format(Date(latest.timeMillis)), style = MaterialTheme.typography.bodySmall,
+                state.ringValidationMessage?.let { message ->
+                    Text(message, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
-        OutlinedButton(onClick = viewModel::refreshRingMode,
-            enabled = !state.ringOperationInProgress) { Text("Refresh Ring status") }
-        state.ringValidationMessage?.let { message ->
-            Text(
-                message,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("RECENT ACTIVITY", style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f))
+                    TextButton(onClick = viewModel::refreshRingMode,
+                        enabled = !state.ringOperationInProgress,
+                        contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Refresh Ring status") }
+                }
+                val check = state.lastAutomationCheck
+                ActivityEntry("Wi-Fi automation", check?.summary ?: "No runs yet",
+                    check?.timeMillis, check?.problem == true)
+                val latest = state.lastManualCheck
+                if (latest != null) {
+                    HorizontalDivider()
+                    ActivityEntry("Manual action", latest.summary, latest.timeMillis, latest.problem)
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun ActivityEntry(title: String, summary: String, timeMillis: Long?, problem: Boolean) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        if (timeMillis != null) {
+            Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                .format(Date(timeMillis)), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+    Text(summary, style = MaterialTheme.typography.bodySmall,
+        color = if (problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
@@ -204,11 +209,27 @@ private fun ModeHero(state: StatusUiState) {
         color = containerColor,
         shape = RoundedCornerShape(28.dp),
     ) {
-        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("CAMERAS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
             Text(headline, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             if (state.ringConnectionFailed) {
                 Text("Ring connection unavailable", style = MaterialTheme.typography.bodySmall)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("Home Wi-Fi", style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f))
+                val presenceLabel = when (state.presence) {
+                    PresenceState.HOME -> "Connected"
+                    PresenceState.AWAY -> "Not connected"
+                    PresenceState.UNKNOWN, PresenceState.NOT_CONFIGURED -> "Unavailable"
+                }
+                Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surface) {
+                    Text(presenceLabel, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (state.presence == PresenceState.HOME) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }
@@ -276,14 +297,6 @@ private fun SetupPage(
         ) { Text(if (state.isSetupComplete) "Save changes" else "Finish setup") }
         Spacer(Modifier.height(4.dp))
         Text("Wi-Fi automation runs periodically. Android may defer it to preserve battery.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-private fun homeStatus(state: StatusUiState): String {
-    return when (state.presence) {
-        PresenceState.HOME -> "Connected to home Wi-Fi: ✓"
-        PresenceState.AWAY -> "Connected to home Wi-Fi: ✗"
-        PresenceState.UNKNOWN, PresenceState.NOT_CONFIGURED -> "Home Wi-Fi status unknown"
     }
 }
 
