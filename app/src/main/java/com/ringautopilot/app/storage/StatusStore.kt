@@ -73,7 +73,17 @@ class StatusStore(context: Context) : PendingChangeStore {
     fun cameraMode(): RingMode = preferences.getString("camera_mode", null)
         ?.let { saved -> RingMode.entries.firstOrNull { it.name == saved } } ?: RingMode.UNKNOWN
 
+    fun observeCameraMode(): Flow<RingMode> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "camera_mode") trySend(cameraMode())
+        }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        trySend(cameraMode())
+        awaitClose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     fun saveCameraMode(mode: RingMode) {
+        if (mode != RingMode.AWAY && mode != RingMode.DISARMED) return
         preferences.edit().putString("camera_mode", mode.name).apply()
     }
 

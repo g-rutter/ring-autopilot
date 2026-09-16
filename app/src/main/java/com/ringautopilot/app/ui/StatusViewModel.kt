@@ -79,7 +79,7 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
             isSetupComplete = settings.homeWifiSsid.isNotBlank(),
             ringLocationId = settings.ringLocationId,
             presence = presence,
-            ringMode = if (ringMode == RingMode.UNKNOWN) container.statusStore.cameraMode() else ringMode,
+            ringMode = ringMode,
             controlMode = settings.controlMode,
             automationStatus = automationStatus,
             ringValidationMessage = validation.message,
@@ -89,13 +89,21 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     val uiState: StateFlow<StatusUiState> = combine(
-        baseState, container.statusStore.observeLastManualCheck(), container.statusStore.observeLastAutomationCheck(),
-    ) { state, manualCheck, automationCheck ->
-        state.copy(lastManualCheck = manualCheck, lastAutomationCheck = automationCheck)
+        baseState, container.statusStore.observeCameraMode(),
+        container.statusStore.observeLastManualCheck(), container.statusStore.observeLastAutomationCheck(),
+    ) { state, savedCameraMode, manualCheck, automationCheck ->
+        state.copy(
+            ringMode = when (state.ringMode) {
+                RingMode.AWAY, RingMode.DISARMED -> state.ringMode
+                RingMode.UNKNOWN, RingMode.UNAVAILABLE -> savedCameraMode
+            },
+            lastManualCheck = manualCheck,
+            lastAutomationCheck = automationCheck,
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = StatusUiState(),
+        initialValue = StatusUiState(ringMode = container.statusStore.cameraMode()),
     )
 
     fun saveHomeWifiSsid(ssid: String) {
