@@ -31,7 +31,7 @@ data class StatusUiState(
     val ringValidationMessage: String? = null,
     val ringOperationInProgress: Boolean = false,
     val ringConnectionFailed: Boolean = false,
-    val lastCheck: LastCheck? = null,
+    val lastManualCheck: LastCheck? = null,
     val lastAutomationCheck: LastCheck? = null,
 )
 
@@ -89,9 +89,9 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     val uiState: StateFlow<StatusUiState> = combine(
-        baseState, container.statusStore.observeLastCheck(), container.statusStore.observeLastAutomationCheck(),
-    ) { state, check, automationCheck ->
-        state.copy(lastCheck = check, lastAutomationCheck = automationCheck)
+        baseState, container.statusStore.observeLastManualCheck(), container.statusStore.observeLastAutomationCheck(),
+    ) { state, manualCheck, automationCheck ->
+        state.copy(lastManualCheck = manualCheck, lastAutomationCheck = automationCheck)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -145,31 +145,34 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    fun selectControlMode(mode: ControlMode) {
+    fun setAutoEnabled(enabled: Boolean) {
+        val mode = if (enabled) ControlMode.AUTO else ControlMode.MANUAL
         if (container.settingsRepository.settings.value.controlMode == mode) return
         container.settingsRepository.updateControlMode(mode)
         container.statusStore.saveControlMode(mode)
         RingWidgetProvider.updateAll(container.appContext)
-        if (mode == ControlMode.AUTO) {
-            mutableRingValidation.value = RingValidationState("Automatic changes are enabled.")
-            return
-        }
-        val ringMode = when (mode) {
-            ControlMode.AWAY -> RingMode.AWAY
-            ControlMode.DISARMED -> RingMode.DISARMED
-            ControlMode.AUTO -> error("Auto mode does not select a Ring mode")
-        }
+        mutableRingValidation.value = RingValidationState(
+            if (enabled) "Automatic changes are enabled." else "Automatic changes are off.",
+        )
+    }
+
+    fun setRingMode(ringMode: RingMode) {
+        require(ringMode == RingMode.AWAY || ringMode == RingMode.DISARMED)
+        setAutoEnabled(false)
         viewModelScope.launch {
             mutableRingValidation.value = RingValidationState("Requesting ${ringMode.displayName()}…", true)
             container.ringService.setMode(ringMode)
                 .onSuccess {
                     container.statusStore.saveCameraMode(ringMode)
+                    container.statusStore.saveCheck("Force ${ringMode.forceLabel()} · Confirmed", false)
                     RingWidgetProvider.updateAll(container.appContext)
                     mutableRingValidation.value = RingValidationState(
                         "Ring confirmed ${ringMode.displayName()}. Automatic changes are off.",
                     )
                 }
                 .onFailure { error ->
+                    container.statusStore.saveCheck("Force ${ringMode.forceLabel()} failed: ${error.userMessage()}", true)
+                    RingWidgetProvider.updateAll(container.appContext)
                     mutableRingValidation.value = RingValidationState(
                         "Could not switch to ${ringMode.displayName()}: ${error.userMessage()}",
                         connectionFailed = true,
@@ -208,6 +211,8 @@ private data class RingValidationState(
 
 private fun RingMode.displayName(): String =
     name.lowercase().replaceFirstChar(Char::uppercase)
+
+private fun RingMode.forceLabel(): String = if (this == RingMode.DISARMED) "Disarm" else "Away"
 
 private fun Throwable.userMessage(): String =
     (message ?: "Unknown error")

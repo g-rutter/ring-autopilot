@@ -14,11 +14,10 @@ enum class RingMode {
     DISARMED,
 }
 
-/** The selected operating mode for Ring, rather than Ring's reported current state. */
+/** Whether Wi-Fi automation is enabled; Ring's current mode is tracked separately. */
 enum class ControlMode {
     AUTO,
-    AWAY,
-    DISARMED,
+    MANUAL,
 }
 
 data class AutomationSettings(

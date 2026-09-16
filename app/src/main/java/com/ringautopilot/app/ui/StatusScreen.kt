@@ -2,6 +2,7 @@ package com.ringautopilot.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,9 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -32,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -111,17 +111,28 @@ private fun DashboardPage(
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("CONTROL", style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                Text(if (state.controlMode == ControlMode.AUTO) "Automatic" else "Manual",
-                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text(if (state.controlMode == ControlMode.AUTO) "Follows home Wi-Fi" else "Set until you choose Auto",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    ControlMode.entries.forEachIndexed { index, mode ->
-                        SegmentedButton(selected = state.controlMode == mode,
-                            onClick = { viewModel.selectControlMode(mode) },
-                            shape = SegmentedButtonDefaults.itemShape(index = index, count = ControlMode.entries.size),
-                            enabled = !state.ringOperationInProgress,
-                            label = { Text(mode.controlLabel()) })
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("Auto", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Switch(checked = state.controlMode == ControlMode.AUTO,
+                        onCheckedChange = viewModel::setAutoEnabled,
+                        enabled = !state.ringOperationInProgress)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(onClick = { viewModel.setRingMode(RingMode.AWAY) },
+                        modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                        enabled = !state.ringOperationInProgress) {
+                        Text("Force\nAway", textAlign = TextAlign.Center)
+                    }
+                    OutlinedButton(onClick = { viewModel.setRingMode(RingMode.DISARMED) },
+                        modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                        enabled = !state.ringOperationInProgress) {
+                        Text("Force\nDisarm", textAlign = TextAlign.Center)
+                    }
+                    FilledTonalButton(onClick = viewModel::syncNow,
+                        modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                        enabled = !state.ringOperationInProgress) {
+                        Text("Apply auto\nnow", textAlign = TextAlign.Center)
                     }
                 }
             }
@@ -154,8 +165,8 @@ private fun DashboardPage(
                 if (check != null) Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
                     .format(Date(check.timeMillis)), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                val latest = state.lastCheck
-                if (latest != null && latest.timeMillis != check?.timeMillis) {
+                val latest = state.lastManualCheck
+                if (latest != null) {
                     HorizontalDivider()
                     Text("Last manual action", style = MaterialTheme.typography.titleSmall)
                     Text(latest.summary, style = MaterialTheme.typography.bodyMedium,
@@ -166,16 +177,8 @@ private fun DashboardPage(
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            FilledTonalButton(
-                onClick = viewModel::syncNow,
-                enabled = !state.ringOperationInProgress,
-            ) { Text("Apply Wi-Fi mode") }
-            OutlinedButton(
-                onClick = viewModel::refreshRingMode,
-                enabled = !state.ringOperationInProgress,
-            ) { Text("Refresh Ring status") }
-        }
+        OutlinedButton(onClick = viewModel::refreshRingMode,
+            enabled = !state.ringOperationInProgress) { Text("Refresh Ring status") }
         state.ringValidationMessage?.let { message ->
             Text(
                 message,
@@ -204,8 +207,9 @@ private fun ModeHero(state: StatusUiState) {
         Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("CAMERAS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
             Text(headline, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-            Text(if (state.ringConnectionFailed) "Ring connection unavailable" else "Current Ring mode",
-                style = MaterialTheme.typography.bodySmall)
+            if (state.ringConnectionFailed) {
+                Text("Ring connection unavailable", style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }
@@ -286,9 +290,3 @@ private fun homeStatus(state: StatusUiState): String {
 private fun formatDuration(seconds: Long): String = "%d:%02d".format(seconds / 60, seconds % 60)
 
 private fun Enum<*>.displayName(): String = name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase)
-
-private fun ControlMode.controlLabel(): String = when (this) {
-    ControlMode.AUTO -> "Auto"
-    ControlMode.AWAY -> "Away"
-    ControlMode.DISARMED -> "Disarm"
-}

@@ -13,16 +13,15 @@ and may require maintenance if Ring changes that API.
 - Discover and persist the first Ring location when no location ID is supplied,
   or use a chosen location ID.
 - Check the current Ring mode and switch it manually from the dashboard.
-- Use **Sync now** to immediately apply the mode implied by the current Wi-Fi
-  presence, including while Auto is off. It does not change the selected
-  control mode or turn scheduled automation back on.
+- Use **Apply auto now** to immediately apply the mode implied by the current Wi-Fi
+  presence, including while Auto is off. It leaves Auto off.
 - In Auto mode, request **Disarmed** after the phone has remained on the home
   Wi-Fi for 30 seconds, or **Away** after it has remained off that Wi-Fi for
   three minutes. Changes are skipped when Ring already has the requested mode.
 - Retry a failed mode write up to four times with capped exponential backoff,
   and show a local notification after a successful automatic change.
-- Keep Auto, Away, or Disarmed as the selected control mode across app
-  restarts.
+- Keep Auto on or off across app restarts. **Force Away** and **Force Disarm** turn Auto
+  off and send a one-time Ring mode request; neither is stored as a control mode.
 
 When the app is visible, Android network callbacks drive presence changes and
 the dashboard shows the live countdown. When it is not visible, a unique
@@ -57,7 +56,7 @@ Only these values are editable and persisted today:
 
 - Home Wi-Fi SSID
 - Optional Ring location ID
-- Control mode: Auto, Away, or Disarmed
+- Auto on or off
 
 The following Auto-mode values are fixed code defaults, rather than settings:
 

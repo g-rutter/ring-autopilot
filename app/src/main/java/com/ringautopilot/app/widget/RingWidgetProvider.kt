@@ -42,7 +42,7 @@ class RingWidgetProvider : AppWidgetProvider() {
                 setInt(R.id.widget_root, "setBackgroundResource", WidgetAppearance.background(id, context))
                 setTextViewText(R.id.widget_control, when (mode) {
                     ControlMode.AUTO -> "Auto"
-                    ControlMode.AWAY, ControlMode.DISARMED -> "Manual"
+                    ControlMode.MANUAL -> "Manual"
                 })
                 setTextViewText(R.id.widget_camera, when (camera) {
                     RingMode.AWAY -> "Away"

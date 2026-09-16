@@ -41,9 +41,10 @@ class PreferencesSettingsRepository(context: Context) : SettingsRepository {
     private fun readSettings() = AutomationSettings(
         homeWifiSsid = preferences.getString(KEY_HOME_WIFI_SSID, "").orEmpty(),
         ringLocationId = preferences.getString(KEY_RING_LOCATION_ID, "").orEmpty(),
-        controlMode = preferences.getString(KEY_CONTROL_MODE, null)
-            ?.let { saved -> ControlMode.entries.firstOrNull { it.name == saved } }
-            ?: ControlMode.AUTO,
+        controlMode = when (preferences.getString(KEY_CONTROL_MODE, null)) {
+            null, ControlMode.AUTO.name -> ControlMode.AUTO
+            else -> ControlMode.MANUAL // Migrate old Away/Disarmed selections to Auto off.
+        },
     )
 
     private companion object {

@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 
 sealed interface AutomationStatus {
     data object Idle : AutomationStatus
-    data class ManualOverride(val mode: ControlMode) : AutomationStatus
+    data object ManualOverride : AutomationStatus
     data class Waiting(val desiredMode: RingMode, val delaySeconds: Long) : AutomationStatus
     data class Switching(val desiredMode: RingMode) : AutomationStatus
     data class Retrying(
@@ -83,7 +83,7 @@ class AutomationController(
      * Immediately applies the mode implied by the current Wi-Fi presence.
      *
      * Unlike scheduled automation, this is an explicit user request and is
-     * therefore allowed while the persisted control mode is Away or Disarmed.
+     * therefore allowed while Auto is off.
      * It deliberately leaves that control mode unchanged, so a one-off sync
      * never re-enables automatic changes.
      */
@@ -120,7 +120,7 @@ class AutomationController(
     ) {
         if (settings.controlMode != ControlMode.AUTO) {
             pendingChangeStore.clearPendingChange()
-            mutableStatus.value = AutomationStatus.ManualOverride(settings.controlMode)
+            mutableStatus.value = AutomationStatus.ManualOverride
             return
         }
 

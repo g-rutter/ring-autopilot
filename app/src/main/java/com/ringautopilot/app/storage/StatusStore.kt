@@ -16,9 +16,22 @@ data class LastCheck(val timeMillis: Long, val summary: String, val problem: Boo
 class StatusStore(context: Context) : PendingChangeStore {
     private val preferences = context.getSharedPreferences("ring_status", Context.MODE_PRIVATE)
 
+    init {
+        // Preserve a manual entry saved by older versions before the shared latest check changes.
+        if (!preferences.contains("manual_check_time")) {
+            lastCheck()?.takeUnless { it.timeMillis == lastAutomationCheck()?.timeMillis }?.let { check ->
+                preferences.edit().putLong("manual_check_time", check.timeMillis)
+                    .putString("manual_check_summary", check.summary)
+                    .putBoolean("manual_check_problem", check.problem).apply()
+            }
+        }
+    }
+
     fun lastCheck(): LastCheck? = readCheck("check")
 
     fun lastAutomationCheck(): LastCheck? = readCheck("automation_check")
+
+    fun lastManualCheck(): LastCheck? = readCheck("manual_check")
 
     private fun readCheck(prefix: String): LastCheck? {
         val time = preferences.getLong("${prefix}_time", 0)
@@ -27,14 +40,14 @@ class StatusStore(context: Context) : PendingChangeStore {
             preferences.getBoolean("${prefix}_problem", false))
     }
 
-    fun observeLastCheck(): Flow<LastCheck?> = callbackFlow {
+    fun observeLastManualCheck(): Flow<LastCheck?> = callbackFlow {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == "check_time" || key == "check_summary" || key == "check_problem") {
-                trySend(lastCheck())
+            if (key?.startsWith("manual_check_") == true) {
+                trySend(lastManualCheck())
             }
         }
         preferences.registerOnSharedPreferenceChangeListener(listener)
-        trySend(lastCheck())
+        trySend(lastManualCheck())
         awaitClose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
@@ -49,11 +62,12 @@ class StatusStore(context: Context) : PendingChangeStore {
 
     fun saveCheck(summary: String, problem: Boolean, automated: Boolean = false) {
         val now = System.currentTimeMillis()
+        val prefix = if (automated) "automation_check" else "manual_check"
         preferences.edit().putLong("check_time", now)
-            .putString("check_summary", summary).putBoolean("check_problem", problem).apply()
-        if (automated) preferences.edit().putLong("automation_check_time", now)
-            .putString("automation_check_summary", summary)
-            .putBoolean("automation_check_problem", problem).apply()
+            .putString("check_summary", summary).putBoolean("check_problem", problem)
+            .putLong("${prefix}_time", now)
+            .putString("${prefix}_summary", summary)
+            .putBoolean("${prefix}_problem", problem).apply()
     }
 
     fun cameraMode(): RingMode = preferences.getString("camera_mode", null)
@@ -63,8 +77,10 @@ class StatusStore(context: Context) : PendingChangeStore {
         preferences.edit().putString("camera_mode", mode.name).apply()
     }
 
-    fun controlMode(): ControlMode = preferences.getString("control_mode", null)
-        ?.let { saved -> ControlMode.entries.firstOrNull { it.name == saved } } ?: ControlMode.AUTO
+    fun controlMode(): ControlMode = when (preferences.getString("control_mode", null)) {
+        null, ControlMode.AUTO.name -> ControlMode.AUTO
+        else -> ControlMode.MANUAL
+    }
 
     fun saveControlMode(mode: ControlMode) {
         preferences.edit().putString("control_mode", mode.name).apply()
