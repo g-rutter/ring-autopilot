@@ -17,12 +17,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.ringautopilot.app.presence.PresenceMonitoringService
+import com.ringautopilot.app.automation.MonitoringWorkScheduler
 import com.ringautopilot.app.ui.StatusScreen
 import com.ringautopilot.app.ui.StatusViewModel
 import com.ringautopilot.app.ui.StatusViewModelFactory
@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        MonitoringWorkScheduler.schedule(this)
         setContent {
             RingAutopilotTheme {
                 RingAutopilotApp(container)
@@ -40,20 +41,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onStart() {
-        stopService(Intent(this, PresenceMonitoringService::class.java))
-        super.onStart()
-    }
-
-    override fun onStop() {
-        // Starting while the Activity is visible is permitted; the service then owns
-        // monitoring after the user leaves the app.
-        ContextCompat.startForegroundService(
-            this,
-            Intent(this, PresenceMonitoringService::class.java),
-        )
-        super.onStop()
-    }
 }
 
 @Composable
@@ -64,6 +51,7 @@ private fun RingAutopilotApp(container: AppContainer) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     var lastToast by remember { mutableStateOf<Toast?>(null) }
+    var useWifiAfterPermissions by remember { mutableStateOf(false) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -75,7 +63,6 @@ private fun RingAutopilotApp(container: AppContainer) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    var useWifiAfterPermissions by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
         onResult = { result ->

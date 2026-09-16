@@ -6,8 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.ringautopilot.app.AppContainer
 import com.ringautopilot.app.automation.AutomationController
 import com.ringautopilot.app.automation.AutomationStatus
-import com.ringautopilot.app.model.PresenceState
 import com.ringautopilot.app.model.ControlMode
+import com.ringautopilot.app.model.PresenceState
 import com.ringautopilot.app.model.RingMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,7 +24,7 @@ data class StatusUiState(
     val ringMode: RingMode = RingMode.UNKNOWN,
     val controlMode: ControlMode = ControlMode.AUTO,
     val automationStatus: AutomationStatus = AutomationStatus.Idle,
-    val ringValidationMessage: String = "Not yet checked",
+    val ringValidationMessage: String? = null,
     val ringOperationInProgress: Boolean = false,
     val ringConnectionFailed: Boolean = false,
 )
@@ -63,10 +63,6 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = StatusUiState(),
     )
-
-    fun startAutomation() = automationController.start()
-
-    fun stopAutomation() = automationController.stop()
 
     fun saveHomeWifiSsid(ssid: String) {
         container.settingsRepository.updateHomeWifiSsid(ssid)
@@ -141,14 +137,19 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
 
     fun refreshPresence() = container.presenceService.refresh()
 
+    fun startAutomation() = automationController.start()
+
+    fun stopAutomation() = automationController.stop()
+
     override fun onCleared() {
         automationController.stop()
         super.onCleared()
     }
+
 }
 
 private data class RingValidationState(
-    val message: String = "Not yet checked",
+    val message: String? = null,
     val inProgress: Boolean = false,
     val connectionFailed: Boolean = false,
 )
@@ -159,7 +160,6 @@ private fun RingMode.displayName(): String =
 private fun Throwable.userMessage(): String =
     (message ?: "Unknown error")
         .replace(Regex("[\\r\\n]+"), " ")
-        .take(180)
 
 class StatusViewModelFactory(
     private val container: AppContainer,

@@ -41,8 +41,8 @@ client; it is encrypted with Android Keystore.
   verification; keep this integration replaceable.
 - Settings other than SSID and optional location ID are currently code defaults,
   rather than persisted UI options.
-- Event polling has no durable cursor or deduplication state across foreground
-  service restarts.
+- Event polling has no durable cursor or deduplication state across worker
+  runs.
 - The complete prioritized roadmap is in
   [`ring_phone_automation_project_plan.md`](ring_phone_automation_project_plan.md).
 
@@ -50,7 +50,7 @@ client; it is encrypted with Android Keystore.
 
 - [x] Home Wi-Fi SSID setup and permission request.
 - [x] Delayed HOME/AWAY decisions.
-- [x] Foreground monitoring service for background execution.
+- [x] WorkManager background monitoring.
 - [~] Bounded exponential retry/backoff for mode changes (the initial
   mode-read failure still needs retry handling).
 - [x] Keystore-backed encrypted refresh-token storage boundary.

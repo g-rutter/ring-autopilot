@@ -64,16 +64,30 @@ class AutomationController(
         presenceService.stop()
     }
 
+    /** Performs one complete presence check and automation decision for a background worker. */
+    suspend fun runOnce() {
+        presenceService.refresh()
+        runAutomation(settingsRepository.settings.value, presenceService.presence.value)
+    }
+
     private fun onStateChanged(controlMode: ControlMode, presence: PresenceState) {
         transitionJob?.cancel()
         transitionJob = null
 
-        if (controlMode != ControlMode.AUTO) {
-            mutableStatus.value = AutomationStatus.ManualOverride(controlMode)
+        transitionJob = scope.launch {
+            runAutomation(settingsRepository.settings.value, presence)
+        }
+    }
+
+    private suspend fun runAutomation(
+        settings: com.ringautopilot.app.model.AutomationSettings,
+        presence: PresenceState,
+    ) {
+        if (settings.controlMode != ControlMode.AUTO) {
+            mutableStatus.value = AutomationStatus.ManualOverride(settings.controlMode)
             return
         }
 
-        val settings = settingsRepository.settings.value
         val desiredMode = desiredModeFor(presence) ?: run {
             mutableStatus.value = AutomationStatus.Idle
             return
@@ -84,22 +98,32 @@ class AutomationController(
             else -> return
         }
 
-        transitionJob = scope.launch {
-            // Do not present a pending change when Ring is already in the desired
-            // mode (or when its status cannot yet be read).
-            val currentMode = ringService.refreshMode().getOrElse {
-                mutableStatus.value = AutomationStatus.Failed(
-                    it.message ?: "Could not read Ring mode",
-                )
-                return@launch
-            }
-            if (currentMode == desiredMode) {
-                mutableStatus.value = AutomationStatus.Idle
-                return@launch
-            }
-            countdownToSwitch(desiredMode, delaySeconds)
-            switchIfNeeded(desiredMode)
+        // Do not present a pending change when Ring is already in the desired
+        // mode (or when its status cannot yet be read).
+        val currentMode = ringService.refreshMode().getOrElse {
+            mutableStatus.value = AutomationStatus.Failed(
+                it.message ?: "Could not read Ring mode",
+            )
+            return
         }
+        if (currentMode == desiredMode) {
+            mutableStatus.value = AutomationStatus.Idle
+            return
+        }
+        countdownToSwitch(desiredMode, delaySeconds)
+
+        // A periodic worker has no continuous network callback while it waits.
+        // Re-read presence before applying a delayed background change.
+        presenceService.refresh()
+        val latestSettings = settingsRepository.settings.value
+        if (
+            latestSettings.controlMode != ControlMode.AUTO ||
+            desiredModeFor(presenceService.presence.value) != desiredMode
+        ) {
+            mutableStatus.value = AutomationStatus.Idle
+            return
+        }
+        switchIfNeeded(desiredMode)
     }
 
     /** Publishes each remaining second so the UI can show a genuine live countdown. */

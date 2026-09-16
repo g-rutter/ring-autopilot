@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ringautopilot.app.automation.AutomationStatus
 import com.ringautopilot.app.model.ControlMode
+import com.ringautopilot.app.model.PresenceState
 import com.ringautopilot.app.model.RingMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,7 +85,7 @@ private fun DashboardPage(state: StatusUiState, viewModel: StatusViewModel, modi
     ) {
         ModeHero(state)
         Text(
-            "Presence: ${state.presence.displayName()}  •  ${automationSummary(state.automationStatus)}",
+            homeStatus(state),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -106,24 +105,36 @@ private fun DashboardPage(state: StatusUiState, viewModel: StatusViewModel, modi
             }
         }
         OutlinedButton(onClick = viewModel::refreshRingMode, enabled = !state.ringOperationInProgress) { Text("Check Ring") }
+        state.ringValidationMessage?.let { message ->
+            Text(
+                message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
 @Composable
 private fun ModeHero(state: StatusUiState) {
-    val (headline, label, colors) = when {
-        state.ringConnectionFailed -> Triple("CAN'T CONNECT", "Ring status is unavailable", CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer))
+    val (headline, containerColor) = when {
+        state.ringConnectionFailed -> Pair("CAN'T CONNECT", MaterialTheme.colorScheme.errorContainer)
         else -> when (state.ringMode) {
-            RingMode.DISARMED -> Triple("DISARMED", "Ring is not armed", CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer))
-            RingMode.AWAY -> Triple("AWAY", "Ring is armed", CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer))
-            RingMode.UNKNOWN, RingMode.UNAVAILABLE -> Triple("NOT CHECKED", "Check Ring to get its current status", CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant))
+            RingMode.DISARMED -> Pair("DISARMED", MaterialTheme.colorScheme.primaryContainer)
+            RingMode.AWAY -> Pair("AWAY", MaterialTheme.colorScheme.tertiaryContainer)
+            RingMode.UNKNOWN, RingMode.UNAVAILABLE -> Pair("NOT CHECKED", MaterialTheme.colorScheme.surfaceVariant)
         }
     }
-    Card(modifier = Modifier.fillMaxWidth(), colors = colors) {
-        Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(label, style = MaterialTheme.typography.labelLarge)
-            Text(headline, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-        }
+    androidx.compose.material3.Surface(
+        color = containerColor,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+    ) {
+        Text(
+            headline,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -179,17 +190,19 @@ private fun SetupPage(
             enabled = ssid.isNotBlank(), modifier = Modifier.fillMaxWidth(),
         ) { Text(if (state.isSetupComplete) "Save changes" else "Finish setup") }
         Spacer(Modifier.height(4.dp))
-        Text("Monitoring continues in the background. Android battery settings may need an exception.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Monitoring runs periodically in the background. Android may defer checks to preserve battery.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-private fun automationSummary(status: AutomationStatus): String = when (status) {
-    AutomationStatus.Idle -> "Automation ready"
-    is AutomationStatus.ManualOverride -> "Manual ${status.mode.controlLabel()} override"
-    is AutomationStatus.Waiting -> "Switching to ${status.desiredMode.displayName()} in ${formatDuration(status.delaySeconds)}"
-    is AutomationStatus.Switching -> "Switching to ${status.desiredMode.displayName()}"
-    is AutomationStatus.Retrying -> "Retry ${status.attempt + 1}/${status.maxAttempts} in ${formatDuration(status.delaySeconds)}"
-    is AutomationStatus.Failed -> "Automation needs attention"
+private fun homeStatus(state: StatusUiState): String {
+    val atHome = state.presence == PresenceState.HOME
+    val pendingChange = state.automationStatus as? AutomationStatus.Waiting
+    val timer = if (state.controlMode == ControlMode.AUTO && pendingChange != null) {
+        " • Switching to ${pendingChange.desiredMode.displayName()} in ${formatDuration(pendingChange.delaySeconds)}"
+    } else {
+        ""
+    }
+    return "Home: ${if (atHome) "✓" else "✗"}$timer"
 }
 
 private fun formatDuration(seconds: Long): String = "%d:%02d".format(seconds / 60, seconds % 60)
