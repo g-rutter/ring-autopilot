@@ -42,6 +42,11 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         ringService = container.ringService,
         settingsRepository = container.settingsRepository,
         notificationService = container.notificationService,
+        pendingChangeStore = container.statusStore,
+        schedulePendingWork = { delayMillis, replace ->
+            com.ringautopilot.app.automation.MonitoringWorkScheduler.schedulePending(
+                container.appContext, delayMillis, replace)
+        },
         onCheckFinished = { presence, status, origin ->
             val result = checkResult(presence, status, origin)
             container.statusStore.saveCheck(result.summary, result.problem,

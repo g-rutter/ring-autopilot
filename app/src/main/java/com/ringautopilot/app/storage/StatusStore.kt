@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.ringautopilot.app.model.ControlMode
 import com.ringautopilot.app.model.RingMode
+import com.ringautopilot.app.automation.PendingChange
+import com.ringautopilot.app.automation.PendingChangeStore
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -11,7 +13,7 @@ import kotlinx.coroutines.flow.callbackFlow
 data class LastCheck(val timeMillis: Long, val summary: String, val problem: Boolean)
 
 /** A small shared snapshot for the dashboard and launcher widget. */
-class StatusStore(context: Context) {
+class StatusStore(context: Context) : PendingChangeStore {
     private val preferences = context.getSharedPreferences("ring_status", Context.MODE_PRIVATE)
 
     fun lastCheck(): LastCheck? = readCheck("check")
@@ -66,5 +68,21 @@ class StatusStore(context: Context) {
 
     fun saveControlMode(mode: ControlMode) {
         preferences.edit().putString("control_mode", mode.name).apply()
+    }
+
+    override fun pendingChange(): PendingChange? {
+        val mode = preferences.getString("pending_mode", null)
+            ?.let { name -> RingMode.entries.firstOrNull { it.name == name } } ?: return null
+        val dueAt = preferences.getLong("pending_due_at", 0)
+        return if (dueAt > 0) PendingChange(mode, dueAt) else null
+    }
+
+    override fun savePendingChange(change: PendingChange) {
+        preferences.edit().putString("pending_mode", change.desiredMode.name)
+            .putLong("pending_due_at", change.dueAtMillis).commit()
+    }
+
+    override fun clearPendingChange() {
+        preferences.edit().remove("pending_mode").remove("pending_due_at").commit()
     }
 }

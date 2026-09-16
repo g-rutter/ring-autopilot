@@ -132,6 +132,11 @@ private fun DashboardPage(
                 Text("AUTOMATION", style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 Text(homeStatus(state), style = MaterialTheme.typography.bodyMedium)
+                val pending = state.automationStatus as? AutomationStatus.Waiting
+                if (state.controlMode == ControlMode.AUTO && pending != null) {
+                    Text("Switching to ${pending.desiredMode.displayName()} in ${formatDuration(pending.delaySeconds)}",
+                        style = MaterialTheme.typography.bodyMedium)
+                }
                 val activity = when (val status = state.automationStatus) {
                     is AutomationStatus.Failed -> status.message
                     is AutomationStatus.Switching -> "Switching to ${status.desiredMode.displayName()}…"
@@ -271,16 +276,10 @@ private fun SetupPage(
 }
 
 private fun homeStatus(state: StatusUiState): String {
-    val pendingChange = state.automationStatus as? AutomationStatus.Waiting
-    val timer = if (state.controlMode == ControlMode.AUTO && pendingChange != null) {
-        " • Switching to ${pendingChange.desiredMode.displayName()} in ${formatDuration(pendingChange.delaySeconds)}"
-    } else {
-        ""
-    }
     return when (state.presence) {
-        PresenceState.HOME -> "Connected to home Wi-Fi: ✓$timer"
-        PresenceState.AWAY -> "Connected to home Wi-Fi: ✗$timer"
-        PresenceState.UNKNOWN, PresenceState.NOT_CONFIGURED -> "Home Wi-Fi status unknown$timer"
+        PresenceState.HOME -> "Connected to home Wi-Fi: ✓"
+        PresenceState.AWAY -> "Connected to home Wi-Fi: ✗"
+        PresenceState.UNKNOWN, PresenceState.NOT_CONFIGURED -> "Home Wi-Fi status unknown"
     }
 }
 

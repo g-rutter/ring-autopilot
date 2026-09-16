@@ -39,6 +39,8 @@ class AutomationController(
     private val ringService: RingService,
     private val settingsRepository: SettingsRepository,
     private val notificationService: NotificationService,
+    private val pendingChangeStore: PendingChangeStore,
+    private val schedulePendingWork: (Long, Boolean) -> Unit,
     private val onCheckFinished: (PresenceState, AutomationStatus, CheckOrigin) -> Unit = { _, _, _ -> },
 ) {
     private val mutableStatus = MutableStateFlow<AutomationStatus>(AutomationStatus.Idle)
@@ -71,7 +73,7 @@ class AutomationController(
     suspend fun runOnce() {
         presenceService.refresh()
         val presence = presenceService.presence.value
-        runAutomation(settingsRepository.settings.value, presence)
+        runAutomation(settingsRepository.settings.value, presence, waitForDeadline = false)
         if (settingsRepository.settings.value.controlMode == ControlMode.AUTO) {
             onCheckFinished(presence, mutableStatus.value, CheckOrigin.AUTOMATIC)
         }
@@ -104,7 +106,7 @@ class AutomationController(
         transitionJob = null
 
         transitionJob = scope.launch {
-            runAutomation(settingsRepository.settings.value, presence)
+            runAutomation(settingsRepository.settings.value, presence, waitForDeadline = true)
             if (settingsRepository.settings.value.controlMode == ControlMode.AUTO) {
                 onCheckFinished(presence, mutableStatus.value, CheckOrigin.AUTOMATIC)
             }
@@ -114,8 +116,10 @@ class AutomationController(
     private suspend fun runAutomation(
         settings: com.ringautopilot.app.model.AutomationSettings,
         presence: PresenceState,
+        waitForDeadline: Boolean,
     ) {
         if (settings.controlMode != ControlMode.AUTO) {
+            pendingChangeStore.clearPendingChange()
             mutableStatus.value = AutomationStatus.ManualOverride(settings.controlMode)
             return
         }
@@ -132,17 +136,34 @@ class AutomationController(
 
         // Do not present a pending change when Ring is already in the desired
         // mode (or when its status cannot yet be read).
-        val currentMode = ringService.refreshMode().getOrElse {
+        val currentMode = refreshModeWithRetry().getOrElse {
             mutableStatus.value = AutomationStatus.Failed(
                 it.message ?: "Could not read Ring mode",
             )
             return
         }
         if (currentMode == desiredMode) {
+            pendingChangeStore.clearPendingChange()
             mutableStatus.value = AutomationStatus.Idle
             return
         }
-        countdownToSwitch(desiredMode, delaySeconds)
+        val now = System.currentTimeMillis()
+        val previous = pendingChangeStore.pendingChange()
+        val isNewPending = previous?.desiredMode != desiredMode
+        val pending = if (!isNewPending) previous else {
+            PendingChange(desiredMode, now + delaySeconds.coerceAtLeast(0) * 1_000).also {
+                pendingChangeStore.savePendingChange(it)
+            }
+        }
+        if (isNewPending || now < pending.dueAtMillis) {
+            schedulePendingWork((pending.dueAtMillis - now).coerceAtLeast(0), isNewPending)
+        }
+        if (waitForDeadline) countdownToSwitch(pending)
+        else if (now < pending.dueAtMillis) {
+            mutableStatus.value = AutomationStatus.Waiting(desiredMode,
+                ((pending.dueAtMillis - now + 999) / 1_000))
+            return
+        }
 
         // A periodic worker has no continuous network callback while it waits.
         // Re-read presence before applying a delayed background change.
@@ -152,24 +173,27 @@ class AutomationController(
             latestSettings.controlMode != ControlMode.AUTO ||
             desiredModeFor(presenceService.presence.value) != desiredMode
         ) {
+            pendingChangeStore.clearPendingChange()
             mutableStatus.value = AutomationStatus.Idle
             return
         }
         switchIfNeeded(desiredMode)
+        if (mutableStatus.value !is AutomationStatus.Failed) pendingChangeStore.clearPendingChange()
     }
 
     /** Publishes each remaining second so the UI can show a genuine live countdown. */
-    private suspend fun countdownToSwitch(desiredMode: RingMode, delaySeconds: Long) {
-        var remainingSeconds = delaySeconds.coerceAtLeast(0)
-        while (remainingSeconds > 0) {
-            mutableStatus.value = AutomationStatus.Waiting(desiredMode, remainingSeconds)
-            delay(1_000)
-            remainingSeconds -= 1
+    private suspend fun countdownToSwitch(pending: PendingChange) {
+        while (true) {
+            val remainingMillis = pending.dueAtMillis - System.currentTimeMillis()
+            if (remainingMillis <= 0) return
+            mutableStatus.value = AutomationStatus.Waiting(pending.desiredMode,
+                (remainingMillis + 999) / 1_000)
+            delay(remainingMillis.coerceAtMost(1_000))
         }
     }
 
     private suspend fun switchIfNeeded(desiredMode: RingMode) {
-        val currentMode = ringService.refreshMode().getOrElse {
+        val currentMode = refreshModeWithRetry().getOrElse {
             mutableStatus.value = AutomationStatus.Failed(it.message ?: "Could not read Ring mode")
             return
         }
@@ -207,6 +231,17 @@ class AutomationController(
         mutableStatus.value = AutomationStatus.Failed(
             lastFailure?.message ?: "Could not change Ring mode after $maxAttempts attempts",
         )
+    }
+
+    private suspend fun refreshModeWithRetry(): Result<RingMode> {
+        val settings = settingsRepository.settings.value
+        val attempts = settings.modeChangeMaxAttempts.coerceAtLeast(1)
+        repeat(attempts) { index ->
+            val result = ringService.refreshMode()
+            if (result.isSuccess || index == attempts - 1) return result
+            delay(retryDelaySeconds(settings.modeChangeInitialBackoffSeconds, index) * 1_000)
+        }
+        error("No Ring status attempt was made")
     }
 
     companion object {

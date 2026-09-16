@@ -5,6 +5,8 @@ import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.Constraints
@@ -28,6 +30,10 @@ class MonitoringWorker(
             ringService = container.ringService,
             settingsRepository = container.settingsRepository,
             notificationService = container.notificationService,
+            pendingChangeStore = container.statusStore,
+            schedulePendingWork = { delayMillis, replace ->
+                MonitoringWorkScheduler.schedulePending(applicationContext, delayMillis, replace)
+            },
             onCheckFinished = { presence, status, origin ->
                 val result = checkResult(presence, status, origin)
                 container.statusStore.saveCheck(result.summary, result.problem,
@@ -40,7 +46,7 @@ class MonitoringWorker(
             container.statusStore.saveControlMode(container.settingsRepository.settings.value.controlMode)
             container.statusStore.saveCameraMode(container.ringService.mode.value)
             RingWidgetProvider.updateAll(applicationContext)
-            Result.success()
+            if (controller.status.value is AutomationStatus.Failed) Result.retry() else Result.success()
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -56,6 +62,7 @@ class MonitoringWorker(
 
 object MonitoringWorkScheduler {
     private const val UNIQUE_WORK_NAME = "ring-presence-monitoring"
+    private const val PENDING_WORK_NAME = "ring-pending-change"
 
     fun schedule(context: Context) {
         val constraints = Constraints.Builder()
@@ -68,6 +75,17 @@ object MonitoringWorkScheduler {
             UNIQUE_WORK_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
             request,
+        )
+    }
+
+    fun schedulePending(context: Context, delayMillis: Long, replace: Boolean) {
+        val request = OneTimeWorkRequestBuilder<MonitoringWorker>()
+            .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
+            .setConstraints(Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            PENDING_WORK_NAME, if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request,
         )
     }
 }
