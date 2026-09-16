@@ -11,8 +11,11 @@ import com.ringautopilot.app.storage.PreferencesSettingsRepository
 import com.ringautopilot.app.storage.EncryptedTokenStore
 import com.ringautopilot.app.storage.SettingsRepository
 import com.ringautopilot.app.storage.TokenStore
+import com.ringautopilot.app.storage.StatusStore
 
 class AppContainer(context: Context) {
+    val appContext: Context = context.applicationContext
+    val statusStore = StatusStore(context)
     val settingsRepository: SettingsRepository = PreferencesSettingsRepository(context)
     val tokenStore: TokenStore = EncryptedTokenStore(context)
     val presenceService: PresenceService = AndroidWifiPresenceService(context, settingsRepository)

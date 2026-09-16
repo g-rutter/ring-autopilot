@@ -6,9 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.ringautopilot.app.AppContainer
 import com.ringautopilot.app.automation.AutomationController
 import com.ringautopilot.app.automation.AutomationStatus
+import com.ringautopilot.app.automation.checkResult
 import com.ringautopilot.app.model.ControlMode
 import com.ringautopilot.app.model.PresenceState
 import com.ringautopilot.app.model.RingMode
+import com.ringautopilot.app.storage.LastCheck
+import com.ringautopilot.app.widget.RingWidgetProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +30,7 @@ data class StatusUiState(
     val ringValidationMessage: String? = null,
     val ringOperationInProgress: Boolean = false,
     val ringConnectionFailed: Boolean = false,
+    val lastCheck: LastCheck? = null,
 )
 
 class StatusViewModel(private val container: AppContainer) : ViewModel() {
@@ -36,10 +40,26 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         ringService = container.ringService,
         settingsRepository = container.settingsRepository,
         notificationService = container.notificationService,
+        onCheckFinished = { presence, status ->
+            val result = checkResult(presence, status)
+            container.statusStore.saveCheck(result.summary, result.problem)
+            RingWidgetProvider.updateAll(container.appContext)
+        },
     )
     private val mutableRingValidation = MutableStateFlow(RingValidationState())
 
-    val uiState: StateFlow<StatusUiState> = combine(
+    init {
+        viewModelScope.launch {
+            container.ringService.mode.collect { mode ->
+                if (mode == RingMode.AWAY || mode == RingMode.DISARMED) {
+                    container.statusStore.saveCameraMode(mode)
+                    RingWidgetProvider.updateAll(container.appContext)
+                }
+            }
+        }
+    }
+
+    private val baseState = combine(
         container.settingsRepository.settings,
         container.presenceService.presence,
         container.ringService.mode,
@@ -51,13 +71,17 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
             isSetupComplete = settings.homeWifiSsid.isNotBlank(),
             ringLocationId = settings.ringLocationId,
             presence = presence,
-            ringMode = ringMode,
+            ringMode = if (ringMode == RingMode.UNKNOWN) container.statusStore.cameraMode() else ringMode,
             controlMode = settings.controlMode,
             automationStatus = automationStatus,
             ringValidationMessage = validation.message,
             ringOperationInProgress = validation.inProgress,
             ringConnectionFailed = validation.connectionFailed,
         )
+    }
+
+    val uiState: StateFlow<StatusUiState> = combine(baseState, container.statusStore.observeLastCheck()) { state, check ->
+        state.copy(lastCheck = check)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -93,6 +117,8 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
             mutableRingValidation.value = RingValidationState("Checking Ring credentials and current mode…", true)
             container.ringService.refreshMode()
                 .onSuccess { mode ->
+                    container.statusStore.saveCameraMode(mode)
+                    RingWidgetProvider.updateAll(container.appContext)
                     mutableRingValidation.value = RingValidationState(
                         "Connected. Ring reports ${mode.displayName()}.",
                     )
@@ -109,6 +135,8 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     fun selectControlMode(mode: ControlMode) {
         if (container.settingsRepository.settings.value.controlMode == mode) return
         container.settingsRepository.updateControlMode(mode)
+        container.statusStore.saveControlMode(mode)
+        RingWidgetProvider.updateAll(container.appContext)
         if (mode == ControlMode.AUTO) {
             mutableRingValidation.value = RingValidationState("Automatic changes are enabled.")
             return
@@ -122,6 +150,8 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
             mutableRingValidation.value = RingValidationState("Requesting ${ringMode.displayName()}…", true)
             container.ringService.setMode(ringMode)
                 .onSuccess {
+                    container.statusStore.saveCameraMode(ringMode)
+                    RingWidgetProvider.updateAll(container.appContext)
                     mutableRingValidation.value = RingValidationState(
                         "Ring confirmed ${ringMode.displayName()}. Automatic changes are off.",
                     )
@@ -136,6 +166,13 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun refreshPresence() = container.presenceService.refresh()
+
+    fun refreshLastCheck() {
+        container.statusStore.saveControlMode(container.settingsRepository.settings.value.controlMode)
+        val mode = container.ringService.mode.value
+        if (mode == RingMode.AWAY || mode == RingMode.DISARMED) container.statusStore.saveCameraMode(mode)
+        RingWidgetProvider.updateAll(container.appContext)
+    }
 
     fun syncNow() = automationController.syncNow()
 

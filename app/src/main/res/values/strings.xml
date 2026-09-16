@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Ring Autopilot</string>
+    <string name="widget_description">Camera mode and automation status</string>
+    <string name="widget_open">Open Ring Autopilot</string>
 </resources>

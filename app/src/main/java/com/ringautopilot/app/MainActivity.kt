@@ -55,7 +55,10 @@ private fun RingAutopilotApp(container: AppContainer) {
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> viewModel.startAutomation()
+                Lifecycle.Event.ON_START -> {
+                    viewModel.refreshLastCheck()
+                    viewModel.startAutomation()
+                }
                 Lifecycle.Event.ON_STOP -> viewModel.stopAutomation()
                 else -> Unit
             }

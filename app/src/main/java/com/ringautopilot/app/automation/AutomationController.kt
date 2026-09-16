@@ -37,6 +37,7 @@ class AutomationController(
     private val ringService: RingService,
     private val settingsRepository: SettingsRepository,
     private val notificationService: NotificationService,
+    private val onCheckFinished: (PresenceState, AutomationStatus) -> Unit = { _, _ -> },
 ) {
     private val mutableStatus = MutableStateFlow<AutomationStatus>(AutomationStatus.Idle)
     private var transitionJob: Job? = null
@@ -67,7 +68,11 @@ class AutomationController(
     /** Performs one complete presence check and automation decision for a background worker. */
     suspend fun runOnce() {
         presenceService.refresh()
-        runAutomation(settingsRepository.settings.value, presenceService.presence.value)
+        val presence = presenceService.presence.value
+        runAutomation(settingsRepository.settings.value, presence)
+        if (settingsRepository.settings.value.controlMode == ControlMode.AUTO) {
+            onCheckFinished(presence, mutableStatus.value)
+        }
     }
 
     /**
@@ -87,6 +92,9 @@ class AutomationController(
                 return@launch
             }
             switchIfNeeded(desiredMode)
+            if (settingsRepository.settings.value.controlMode == ControlMode.AUTO) {
+                onCheckFinished(presenceService.presence.value, mutableStatus.value)
+            }
         }
     }
 
@@ -96,6 +104,9 @@ class AutomationController(
 
         transitionJob = scope.launch {
             runAutomation(settingsRepository.settings.value, presence)
+            if (settingsRepository.settings.value.controlMode == ControlMode.AUTO) {
+                onCheckFinished(presence, mutableStatus.value)
+            }
         }
     }
 

@@ -9,6 +9,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.Constraints
 import com.ringautopilot.app.AppContainer
+import com.ringautopilot.app.widget.RingWidgetProvider
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -26,13 +27,23 @@ class MonitoringWorker(
             ringService = container.ringService,
             settingsRepository = container.settingsRepository,
             notificationService = container.notificationService,
+            onCheckFinished = { presence, status ->
+                val result = checkResult(presence, status)
+                container.statusStore.saveCheck(result.summary, result.problem)
+                RingWidgetProvider.updateAll(applicationContext)
+            },
         )
         return try {
             controller.runOnce()
+            container.statusStore.saveControlMode(container.settingsRepository.settings.value.controlMode)
+            container.statusStore.saveCameraMode(container.ringService.mode.value)
+            RingWidgetProvider.updateAll(applicationContext)
             Result.success()
         } catch (error: CancellationException) {
             throw error
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            container.statusStore.saveCheck("Check failed: ${error.message ?: "Unknown error"}", true)
+            RingWidgetProvider.updateAll(applicationContext)
             Result.retry()
         } finally {
             controller.stop()

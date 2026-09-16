@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -23,6 +24,8 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.Surface
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import java.text.DateFormat
+import java.util.Date
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ringautopilot.app.automation.AutomationStatus
 import com.ringautopilot.app.model.ControlMode
@@ -52,9 +57,9 @@ fun StatusScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (showSetup) "Set up Ring Autopilot" else "Ring Autopilot") },
+                title = { Text(if (showSetup) "Set up" else "Ring Autopilot", fontWeight = FontWeight.SemiBold) },
                 actions = {
-                    if (!showSetup) TextButton(onClick = { setupRequested = true }) { Text("Setup") }
+                    if (!showSetup) TextButton(onClick = { setupRequested = true }) { Text("Settings") }
                     if (showSetup && state.isSetupComplete) {
                         TextButton(onClick = { setupRequested = false }) { Text("Done") }
                     }
@@ -81,27 +86,52 @@ fun StatusScreen(
 private fun DashboardPage(state: StatusUiState, viewModel: StatusViewModel, modifier: Modifier) {
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         ModeHero(state)
-        Text(
-            homeStatus(state),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text("Control mode", style = MaterialTheme.typography.titleSmall)
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            ControlMode.entries.forEachIndexed { index, mode ->
-                SegmentedButton(
-                    selected = state.controlMode == mode,
-                    onClick = { viewModel.selectControlMode(mode) },
-                    shape = SegmentedButtonDefaults.itemShape(
-                        index = index,
-                        count = ControlMode.entries.size,
-                    ),
-                    enabled = !state.ringOperationInProgress,
-                    label = { Text(mode.controlLabel()) },
-                )
+        Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("CONTROL", style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(if (state.controlMode == ControlMode.AUTO) "Automatic" else "Manual",
+                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(if (state.controlMode == ControlMode.AUTO) "Follows home Wi-Fi" else "Set until you choose Auto",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    ControlMode.entries.forEachIndexed { index, mode ->
+                        SegmentedButton(selected = state.controlMode == mode,
+                            onClick = { viewModel.selectControlMode(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = ControlMode.entries.size),
+                            enabled = !state.ringOperationInProgress,
+                            label = { Text(mode.controlLabel()) })
+                    }
+                }
+            }
+        }
+        Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("AUTOMATION", style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(homeStatus(state), style = MaterialTheme.typography.bodyMedium)
+                val activity = when (val status = state.automationStatus) {
+                    is AutomationStatus.Failed -> status.message
+                    is AutomationStatus.Switching -> "Switching to ${status.desiredMode.displayName()}…"
+                    is AutomationStatus.Retrying -> "Retrying ${status.desiredMode.displayName()} (${status.attempt}/${status.maxAttempts})"
+                    else -> null
+                }
+                if (activity != null) Text(activity, style = MaterialTheme.typography.bodySmall,
+                    color = if (state.automationStatus is AutomationStatus.Failed) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant)
+                val check = state.lastCheck
+                HorizontalDivider()
+                Text("Last automated check", style = MaterialTheme.typography.titleSmall)
+                Text(check?.summary ?: "No checks yet", style = MaterialTheme.typography.bodyMedium,
+                    color = if (check?.problem == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                if (check != null) Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                    .format(Date(check.timeMillis)), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -127,23 +157,24 @@ private fun DashboardPage(state: StatusUiState, viewModel: StatusViewModel, modi
 @Composable
 private fun ModeHero(state: StatusUiState) {
     val (headline, containerColor) = when {
-        state.ringConnectionFailed -> Pair("CAN'T CONNECT", MaterialTheme.colorScheme.errorContainer)
+        state.ringConnectionFailed -> Pair("Connection issue", MaterialTheme.colorScheme.errorContainer)
         else -> when (state.ringMode) {
-            RingMode.DISARMED -> Pair("DISARMED", MaterialTheme.colorScheme.primaryContainer)
-            RingMode.AWAY -> Pair("AWAY", MaterialTheme.colorScheme.tertiaryContainer)
-            RingMode.UNKNOWN, RingMode.UNAVAILABLE -> Pair("NOT CHECKED", MaterialTheme.colorScheme.surfaceVariant)
+            RingMode.DISARMED -> Pair("Disarmed", MaterialTheme.colorScheme.primaryContainer)
+            RingMode.AWAY -> Pair("Away", MaterialTheme.colorScheme.primaryContainer)
+            RingMode.UNKNOWN, RingMode.UNAVAILABLE -> Pair("Unknown", MaterialTheme.colorScheme.surfaceVariant)
         }
     }
-    androidx.compose.material3.Surface(
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
         color = containerColor,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+        shape = RoundedCornerShape(28.dp),
     ) {
-        Text(
-            headline,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
+        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("CAMERAS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            Text(headline, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            Text(if (state.ringConnectionFailed) "Check Ring connection" else "Current Ring mode",
+                style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 
@@ -204,14 +235,17 @@ private fun SetupPage(
 }
 
 private fun homeStatus(state: StatusUiState): String {
-    val atHome = state.presence == PresenceState.HOME
     val pendingChange = state.automationStatus as? AutomationStatus.Waiting
     val timer = if (state.controlMode == ControlMode.AUTO && pendingChange != null) {
         " • Switching to ${pendingChange.desiredMode.displayName()} in ${formatDuration(pendingChange.delaySeconds)}"
     } else {
         ""
     }
-    return "Home: ${if (atHome) "✓" else "✗"}$timer"
+    return when (state.presence) {
+        PresenceState.HOME -> "Connected to home Wi-Fi: ✓$timer"
+        PresenceState.AWAY -> "Connected to home Wi-Fi: ✗$timer"
+        PresenceState.UNKNOWN, PresenceState.NOT_CONFIGURED -> "Home Wi-Fi status unknown$timer"
+    }
 }
 
 private fun formatDuration(seconds: Long): String = "%d:%02d".format(seconds / 60, seconds % 60)
