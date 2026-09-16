@@ -12,25 +12,25 @@
         android:layout_weight="1.2" android:gravity="top" android:orientation="vertical">
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="CAMERAS" android:textColor="#89DDFB" android:textSize="9sp" android:textStyle="bold" />
-        <TextView android:id="@+id/widget_camera" android:layout_width="wrap_content"
-            android:layout_height="wrap_content" android:text="Unknown" android:textColor="#FFF7F0"
-            android:textSize="16sp" android:textStyle="bold" android:maxLines="1" />
+        <TextView android:id="@+id/widget_camera" style="@style/WidgetStatusText"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Unknown" />
     </LinearLayout>
     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
         android:layout_weight="1" android:gravity="top" android:orientation="vertical">
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="CONTROL" android:textColor="#89DDFB" android:textSize="9sp" android:textStyle="bold" />
-        <TextView android:id="@+id/widget_control" android:layout_width="wrap_content"
-            android:layout_height="wrap_content" android:text="Auto" android:textColor="#FFF7F0"
-            android:textSize="14sp" android:textStyle="bold" android:maxLines="1" />
+        <TextView android:id="@+id/widget_control" style="@style/WidgetStatusText"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Auto" />
     </LinearLayout>
     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
         android:layout_weight="1.4" android:gravity="top" android:orientation="vertical">
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="HEALTH" android:textColor="#89DDFB" android:textSize="9sp" android:textStyle="bold" />
-        <TextView android:id="@+id/widget_health" android:layout_width="wrap_content"
-            android:layout_height="wrap_content" android:text="Pending" android:textColor="#FFF7F0"
-            android:textSize="14sp" android:textStyle="bold" android:maxLines="1" />
+        <TextView android:id="@+id/widget_health" style="@style/WidgetStatusText"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Pending" />
         <TextView android:id="@+id/widget_check_time" android:layout_width="wrap_content"
             android:layout_height="wrap_content" android:text="No checks" android:textColor="#FFF7F0"
             android:textSize="10sp" android:maxLines="1" />
