@@ -57,7 +57,7 @@ class RingWidgetProvider : AppWidgetProvider() {
                 })
                 setInt(R.id.widget_health, "setTextColor", if (check?.problem == true) 0xFFFFB4A9.toInt() else 0xFFFFF7F0.toInt())
                 setTextViewText(R.id.widget_check_time, check?.let {
-                    SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(Date(it.timeMillis))
+                    SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(it.timeMillis))
                 } ?: "No checks")
                 val open = PendingIntent.getActivity(context, id,
                     Intent(context, MainActivity::class.java),
