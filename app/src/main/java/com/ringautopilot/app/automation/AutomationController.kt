@@ -70,6 +70,26 @@ class AutomationController(
         runAutomation(settingsRepository.settings.value, presenceService.presence.value)
     }
 
+    /**
+     * Immediately applies the mode implied by the current Wi-Fi presence.
+     *
+     * Unlike scheduled automation, this is an explicit user request and is
+     * therefore allowed while the persisted control mode is Away or Disarmed.
+     * It deliberately leaves that control mode unchanged, so a one-off sync
+     * never re-enables automatic changes.
+     */
+    fun syncNow() {
+        transitionJob?.cancel()
+        transitionJob = scope.launch {
+            presenceService.refresh()
+            val desiredMode = desiredModeFor(presenceService.presence.value) ?: run {
+                mutableStatus.value = AutomationStatus.Idle
+                return@launch
+            }
+            switchIfNeeded(desiredMode)
+        }
+    }
+
     private fun onStateChanged(controlMode: ControlMode, presence: PresenceState) {
         transitionJob?.cancel()
         transitionJob = null

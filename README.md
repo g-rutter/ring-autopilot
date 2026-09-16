@@ -13,6 +13,9 @@ and may require maintenance if Ring changes that API.
 - Discover and persist the first Ring location when no location ID is supplied,
   or use a chosen location ID.
 - Check the current Ring mode and switch it manually from the dashboard.
+- Use **Sync now** to immediately apply the mode implied by the current Wi-Fi
+  presence, including while Auto is off. It does not change the selected
+  control mode or turn scheduled automation back on.
 - In Auto mode, request **Disarmed** after the phone has remained on the home
   Wi-Fi for 30 seconds, or **Away** after it has remained off that Wi-Fi for
   three minutes. Changes are skipped when Ring already has the requested mode.

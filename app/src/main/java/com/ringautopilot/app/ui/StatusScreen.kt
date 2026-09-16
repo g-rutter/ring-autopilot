@@ -104,7 +104,16 @@ private fun DashboardPage(state: StatusUiState, viewModel: StatusViewModel, modi
                 )
             }
         }
-        OutlinedButton(onClick = viewModel::refreshRingMode, enabled = !state.ringOperationInProgress) { Text("Check Ring") }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            FilledTonalButton(
+                onClick = viewModel::syncNow,
+                enabled = !state.ringOperationInProgress,
+            ) { Text("Sync now") }
+            OutlinedButton(
+                onClick = viewModel::refreshRingMode,
+                enabled = !state.ringOperationInProgress,
+            ) { Text("Check Ring") }
+        }
         state.ringValidationMessage?.let { message ->
             Text(
                 message,

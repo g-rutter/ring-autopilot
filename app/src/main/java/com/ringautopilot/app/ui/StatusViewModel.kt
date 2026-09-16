@@ -137,6 +137,8 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
 
     fun refreshPresence() = container.presenceService.refresh()
 
+    fun syncNow() = automationController.syncNow()
+
     fun startAutomation() = automationController.start()
 
     fun stopAutomation() = automationController.stop()
