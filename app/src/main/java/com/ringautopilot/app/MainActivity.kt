@@ -2,9 +2,11 @@ package com.ringautopilot.app
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -52,10 +54,12 @@ private fun RingAutopilotApp(container: AppContainer) {
     val context = LocalContext.current
     var lastToast by remember { mutableStateOf<Toast?>(null) }
     var useWifiAfterPermissions by remember { mutableStateOf(false) }
+    var backgroundLocationGranted by remember { mutableStateOf(hasBackgroundLocation(context)) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> {
+                    backgroundLocationGranted = hasBackgroundLocation(context)
                     viewModel.refreshLastCheck()
                     viewModel.startAutomation()
                 }
@@ -95,6 +99,10 @@ private fun RingAutopilotApp(container: AppContainer) {
             }
         },
     )
+    val backgroundPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { backgroundLocationGranted = hasBackgroundLocation(context) },
+    )
 
     StatusScreen(
         viewModel = viewModel,
@@ -130,8 +138,28 @@ private fun RingAutopilotApp(container: AppContainer) {
                 )
             }
         },
+        backgroundLocationGranted = backgroundLocationGranted,
+        requestBackgroundLocation = {
+            if (!hasWifiPermissions(context)) {
+                permissionLauncher.launch(
+                    missingPermissions(context, includeNotifications = false).toTypedArray(),
+                )
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                })
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                backgroundPermissionLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            }
+        },
     )
 }
+
+private fun hasBackgroundLocation(context: android.content.Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
 private fun hasWifiPermissions(context: android.content.Context): Boolean =
     ContextCompat.checkSelfPermission(

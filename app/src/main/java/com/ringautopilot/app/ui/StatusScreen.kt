@@ -49,6 +49,8 @@ fun StatusScreen(
     viewModel: StatusViewModel,
     requestPermissions: () -> Unit,
     useCurrentWifi: () -> Unit,
+    backgroundLocationGranted: Boolean,
+    requestBackgroundLocation: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var setupRequested by remember { mutableStateOf(false) }
@@ -73,22 +75,37 @@ fun StatusScreen(
                 viewModel = viewModel,
                 requestPermissions = requestPermissions,
                 useCurrentWifi = useCurrentWifi,
+                backgroundLocationGranted = backgroundLocationGranted,
+                requestBackgroundLocation = requestBackgroundLocation,
                 onDone = { setupRequested = false },
                 modifier = Modifier.padding(padding),
             )
         } else {
-            DashboardPage(state, viewModel, Modifier.padding(padding))
+            DashboardPage(state, viewModel, backgroundLocationGranted,
+                requestBackgroundLocation, Modifier.padding(padding))
         }
     }
 }
 
 @Composable
-private fun DashboardPage(state: StatusUiState, viewModel: StatusViewModel, modifier: Modifier) {
+private fun DashboardPage(
+    state: StatusUiState,
+    viewModel: StatusViewModel,
+    backgroundLocationGranted: Boolean,
+    requestBackgroundLocation: () -> Unit,
+    modifier: Modifier,
+) {
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         ModeHero(state)
+        if (state.controlMode == ControlMode.AUTO && !backgroundLocationGranted) {
+            Text("Auto needs Location set to Allow all the time to identify home Wi-Fi while the app is closed.")
+            OutlinedButton(onClick = requestBackgroundLocation) {
+                Text("Open app permissions")
+            }
+        }
         Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface,
             tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -194,6 +211,8 @@ private fun SetupPage(
     viewModel: StatusViewModel,
     requestPermissions: () -> Unit,
     useCurrentWifi: () -> Unit,
+    backgroundLocationGranted: Boolean,
+    requestBackgroundLocation: () -> Unit,
     onDone: () -> Unit,
     modifier: Modifier,
 ) {
@@ -216,6 +235,13 @@ private fun SetupPage(
             FilledTonalButton(onClick = useCurrentWifi) { Text("Use current Wi-Fi") }
         }
         Text("Reading Wi-Fi requires Precise location permission and Location services.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (!backgroundLocationGranted) {
+            Text("For Auto while the app is closed, set Location to Allow all the time in app permissions.",
+                style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = requestBackgroundLocation) {
+                Text("Open app permissions")
+            }
+        }
         Text("Ring connection", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = refreshToken, onValueChange = { refreshToken = it }, modifier = Modifier.fillMaxWidth(),
