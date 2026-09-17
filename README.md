@@ -16,8 +16,8 @@ and may require maintenance if Ring changes that API.
 - Use **Apply auto now** to immediately apply the mode implied by the current Wi-Fi
   presence, including while Auto is off. It leaves Auto off.
 - In Auto mode, request **Disarmed** after the phone has remained on the home
-  Wi-Fi for 30 seconds, or **Away** after it has remained off that Wi-Fi for
-  three minutes. Changes are skipped when Ring already has the requested mode.
+  Wi-Fi for one second, or **Away** after it has remained off that Wi-Fi for
+  30 seconds. Changes are skipped when Ring already has the requested mode.
 - Retry a failed mode write up to four times with capped exponential backoff,
   and show a local notification after a successful automatic change.
 - Keep Auto on or off across app restarts. **Force Away** and **Force Disarm** turn Auto
@@ -79,6 +79,7 @@ and is not itself retried by the controller.
 - `events/` — event grouping primitives, not currently wired into a worker or
   notification flow.
 - `notifications/` — local mode-change notifications.
+- `logging/` — structured, redacted diagnostics sent to logcat.
 - `storage/` — settings and Keystore-backed encrypted refresh-token storage.
 - `ui/` — Compose status screen and view model.
 
@@ -91,7 +92,8 @@ and is not itself retried by the controller.
   it does not offer a location picker.
 - Automatic changes can overwrite a deliberate mode change made in the Ring
   app; there is no override cooldown.
-- There is no durable status/history for the last automatic success or failure.
+- The dashboard retains only the latest manual and automatic check, not a
+  diagnostic history.
 - `pollEvents`, `DefaultEventAggregator`, and event-summary notifications are
   implemented as isolated components but are not invoked by the app. They have
   no persistent event cursor or cross-restart deduplication.
@@ -109,5 +111,30 @@ JAVA_HOME="$JDK_TASK" GRADLE_USER_HOME='/private/tmp/ring-autopilot-gradle' ./gr
 ```
 
 The checked-in unit tests cover presence-to-mode selection, retry-delay
-calculation, and event-aggregation behavior. They do not exercise Android
-framework code or Ring HTTP requests.
+calculation, event aggregation, and diagnostic formatting/redaction. They do
+not exercise Android framework code or Ring HTTP requests.
+
+## Diagnostics
+
+Filter logcat with `adb logcat -s RingAutopilot`. The app logs its version at
+session start. `work_enqueue` records a WorkManager request and its constraints;
+it does not mean Android ran it. Each worker run has `work_start` and one
+`work_end` with its work ID, attempt, outcome, reason, and duration. `check_start`
+and `check_end` describe the presence and mode decision; `http_result` and
+`http_failure` identify the endpoint template, status or safe failure category,
+and timing. Permission, presence, notification, and dashboard actions have
+their own named events. Short `opId` values connect check events and multi-step
+dashboard actions.
+
+`DiagnosticLog` keeps call sites independent of logcat. Its formatter redacts
+sensitive fields and unsafe values; exception messages, HTTP bodies, Ring
+tokens, exact SSIDs, location IDs, camera names, and hardware IDs are never
+included. The dashboard's latest-check summaries are separate from these
+diagnostics. Background and permission flows still need device logcat
+verification with a connected phone.
+
+For new code, log one start and one outcome per operation, use stable reason
+codes and safe typed fields, and rethrow coroutine cancellation. Keep secrets,
+raw server text, and exception messages out of fields. For later review, save
+`adb logcat -v time -s RingAutopilot` output while exercising the app; Android's
+log buffer can rotate.

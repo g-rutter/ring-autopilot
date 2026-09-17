@@ -2,11 +2,15 @@ package com.ringautopilot.app.ring
 
 import android.content.Context
 import android.provider.Settings
+import com.ringautopilot.app.logging.Diagnostics
+import com.ringautopilot.app.logging.HttpStatusException
+import com.ringautopilot.app.logging.errorReason
 import com.ringautopilot.app.model.RingMode
 import com.ringautopilot.app.model.RingEvent
 import com.ringautopilot.app.model.RingEventType
 import com.ringautopilot.app.storage.SettingsRepository
 import com.ringautopilot.app.storage.TokenStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,13 +37,13 @@ class HttpRingService(
 
     override val mode: StateFlow<RingMode> = mutableMode.asStateFlow()
 
-    override suspend fun refreshMode(): Result<RingMode> = runCatching {
+    override suspend fun refreshMode(): Result<RingMode> = catchingOperation {
         val locationId = locationId()
         val response = request("https://prd-api-us.prd.rings.solutions/api/v1/mode/location/$locationId")
         modeFrom(response).also { mutableMode.value = it }
     }
 
-    override suspend fun setMode(mode: RingMode): Result<Unit> = runCatching {
+    override suspend fun setMode(mode: RingMode): Result<Unit> = catchingOperation {
         require(mode == RingMode.AWAY || mode == RingMode.DISARMED) {
             "Only Away and Disarmed can be selected"
         }
@@ -50,11 +54,14 @@ class HttpRingService(
             method = "POST",
             body = JSONObject().put("mode", value).toString(),
         )
-        check(modeFrom(response) == mode) { "Ring did not confirm mode $value" }
+        if (modeFrom(response) != mode) {
+            Diagnostics.warn("mode_confirmation_failed", mapOf("desiredMode" to mode, "reason" to "unconfirmed"))
+            error("Ring did not confirm mode")
+        }
         mutableMode.value = mode
     }
 
-    override suspend fun pollEvents(sinceEpochMillis: Long): Result<List<RingEvent>> = runCatching {
+    override suspend fun pollEvents(sinceEpochMillis: Long): Result<List<RingEvent>> = catchingOperation {
         val locationId = locationId()
         val devices = request("https://api.ring.com/clients_api/ring_devices")
         val result = mutableListOf<RingEvent>()
@@ -88,13 +95,18 @@ class HttpRingService(
 
     private suspend fun locationId(): String {
         settingsRepository.settings.value.ringLocationId.takeIf { it.isNotBlank() }?.let { return it }
-        val locations = request("https://api.ring.com/devices/v1/locations")
-            .optJSONArray("user_locations")
+        val locations = try {
+            request("https://api.ring.com/devices/v1/locations").optJSONArray("user_locations")
+        } catch (error: Exception) {
+            Diagnostics.warn("location_discovery", mapOf("outcome" to "failure", "reason" to errorReason(error)), error)
+            throw error
+        }
         val first = locations?.optJSONObject(0)
             ?: error("No Ring locations found for this account")
         val id = first.optString("location_id")
         check(id.isNotBlank()) { "Ring returned a location without an ID" }
         settingsRepository.updateRingLocationId(id)
+        Diagnostics.info("location_discovery", mapOf("outcome" to "found"))
         return id
     }
 
@@ -109,6 +121,8 @@ class HttpRingService(
         body: String?,
         retryAuth: Boolean,
     ): JSONObject {
+        val started = System.currentTimeMillis()
+        val endpoint = endpointTemplate(url)
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 20_000
@@ -125,15 +139,22 @@ class HttpRingService(
         try {
             body?.let { connection.outputStream.use { output -> output.write(it.toByteArray()) } }
             val status = connection.responseCode
+            Diagnostics.debug("http_result", mapOf("method" to method, "endpoint" to endpoint, "status" to status,
+                "durationMs" to System.currentTimeMillis() - started))
             if (status == HttpURLConnection.HTTP_UNAUTHORIZED && retryAuth) {
+                Diagnostics.warn("auth_refresh", mapOf("endpoint" to endpoint, "reason" to "http_401"))
                 accessToken = null
                 authenticate()
                 return requestBlocking(url, method, body, retryAuth = false)
             }
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
             val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) error("Ring request failed ($status): ${text.take(240)}")
+            if (status !in 200..299) throw HttpStatusException(status)
             return JSONObject(text)
+        } catch (error: Exception) {
+            Diagnostics.warn("http_failure", mapOf("method" to method, "endpoint" to endpoint, "reason" to errorReason(error),
+                "durationMs" to System.currentTimeMillis() - started), error)
+            throw error
         } finally {
             connection.disconnect()
         }
@@ -171,6 +192,8 @@ class HttpRingService(
     }
 
     private fun postJson(url: String, body: String, contentType: String, authorization: String? = null): JSONObject {
+        val started = System.currentTimeMillis()
+        val endpoint = endpointTemplate(url)
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 20_000
@@ -187,11 +210,35 @@ class HttpRingService(
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
             val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) error("Ring authentication failed ($status): ${text.take(240)}")
+            Diagnostics.debug("http_result", mapOf("method" to "post", "endpoint" to endpoint, "status" to status,
+                "durationMs" to System.currentTimeMillis() - started))
+            if (status !in 200..299) throw HttpStatusException(status)
             JSONObject(text)
+        } catch (error: Exception) {
+            Diagnostics.warn("http_failure", mapOf("method" to "post", "endpoint" to endpoint,
+                "reason" to errorReason(error), "durationMs" to System.currentTimeMillis() - started), error)
+            throw error
         } finally {
             connection.disconnect()
         }
+    }
+
+    private suspend fun <T> catchingOperation(block: suspend () -> T): Result<T> = try {
+        Result.success(block())
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        Result.failure(error)
+    }
+
+    private fun endpointTemplate(url: String): String = when {
+        url.contains("/mode/location/") -> "mode_location"
+        url.contains("/locations/") && url.contains("/events") -> "location_events"
+        url.contains("/ring_devices") -> "ring_devices"
+        url.contains("/locations") -> "locations"
+        url.contains("/oauth/token") -> "oauth_token"
+        url.contains("/session") -> "session"
+        else -> "unknown"
     }
 
     private fun decodeWrappedToken(token: String): String = runCatching {

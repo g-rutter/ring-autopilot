@@ -1,5 +1,8 @@
 package com.ringautopilot.app.automation
 
+import com.ringautopilot.app.logging.Diagnostics
+import com.ringautopilot.app.logging.errorReason
+import com.ringautopilot.app.logging.operationId
 import com.ringautopilot.app.model.PresenceState
 import com.ringautopilot.app.model.ControlMode
 import com.ringautopilot.app.model.RingMode
@@ -46,6 +49,8 @@ class AutomationController(
     private val mutableStatus = MutableStateFlow<AutomationStatus>(AutomationStatus.Idle)
     private var transitionJob: Job? = null
     private var observationJob: Job? = null
+    private var lastDecision = "unavailable"
+    private var currentOpId = "none"
 
     val status: StateFlow<AutomationStatus> = mutableStatus.asStateFlow()
 
@@ -73,10 +78,14 @@ class AutomationController(
     suspend fun runOnce() {
         presenceService.refresh()
         val presence = presenceService.presence.value
+        lastDecision = "unavailable"
+        currentOpId = operationId()
+        Diagnostics.info("check_start", mapOf("opId" to currentOpId, "origin" to "automatic", "presence" to presence, "auto" to (settingsRepository.settings.value.controlMode == ControlMode.AUTO)))
         runAutomation(settingsRepository.settings.value, presence, waitForDeadline = false)
         if (settingsRepository.settings.value.controlMode == ControlMode.AUTO) {
             onCheckFinished(presence, mutableStatus.value, CheckOrigin.AUTOMATIC)
         }
+        logDecision("automatic", presence)
     }
 
     /**
@@ -91,13 +100,18 @@ class AutomationController(
         transitionJob?.cancel()
         transitionJob = scope.launch {
             presenceService.refresh()
+            Diagnostics.info("check_start", mapOf("opId" to currentOpId, "origin" to "manual_apply", "presence" to presenceService.presence.value))
+            lastDecision = "unavailable"
+            currentOpId = operationId()
             val desiredMode = desiredModeFor(presenceService.presence.value) ?: run {
                 mutableStatus.value = AutomationStatus.Idle
                 onCheckFinished(presenceService.presence.value, mutableStatus.value, CheckOrigin.MANUAL_APPLY)
+                logDecision("manual_apply", presenceService.presence.value)
                 return@launch
             }
             switchIfNeeded(desiredMode)
             onCheckFinished(presenceService.presence.value, mutableStatus.value, CheckOrigin.MANUAL_APPLY)
+            logDecision("manual_apply", presenceService.presence.value)
         }
     }
 
@@ -106,11 +120,22 @@ class AutomationController(
         transitionJob = null
 
         transitionJob = scope.launch {
+            lastDecision = "unavailable"
+            currentOpId = operationId()
+            Diagnostics.info("check_start", mapOf("opId" to currentOpId, "origin" to "automatic", "presence" to presence))
             runAutomation(settingsRepository.settings.value, presence, waitForDeadline = true)
             if (settingsRepository.settings.value.controlMode == ControlMode.AUTO) {
                 onCheckFinished(presence, mutableStatus.value, CheckOrigin.AUTOMATIC)
             }
+            logDecision("automatic", presence)
         }
+    }
+
+    private fun logDecision(origin: String, presence: PresenceState) {
+        val reason = lastDecision
+        Diagnostics.info("check_end", mapOf("opId" to currentOpId, "origin" to origin, "presence" to presence, "currentMode" to ringService.mode.value,
+            "desiredMode" to desiredModeFor(presence), "auto" to (settingsRepository.settings.value.controlMode == ControlMode.AUTO),
+            "pendingDeadline" to pendingChangeStore.pendingChange()?.dueAtMillis, "outcome" to reason))
     }
 
     private suspend fun runAutomation(
@@ -120,11 +145,13 @@ class AutomationController(
     ) {
         if (settings.controlMode != ControlMode.AUTO) {
             pendingChangeStore.clearPendingChange()
+            lastDecision = "auto_off"
             mutableStatus.value = AutomationStatus.ManualOverride
             return
         }
 
         val desiredMode = desiredModeFor(presence) ?: run {
+            lastDecision = "unavailable"
             mutableStatus.value = AutomationStatus.Idle
             return
         }
@@ -137,6 +164,7 @@ class AutomationController(
         // Do not present a pending change when Ring is already in the desired
         // mode (or when its status cannot yet be read).
         val currentMode = refreshModeWithRetry().getOrElse {
+            lastDecision = "failed"
             mutableStatus.value = AutomationStatus.Failed(
                 it.message ?: "Could not read Ring mode",
             )
@@ -144,6 +172,7 @@ class AutomationController(
         }
         if (currentMode == desiredMode) {
             pendingChangeStore.clearPendingChange()
+            lastDecision = "already_correct"
             mutableStatus.value = AutomationStatus.Idle
             return
         }
@@ -160,6 +189,7 @@ class AutomationController(
         }
         if (waitForDeadline) countdownToSwitch(pending)
         else if (now < pending.dueAtMillis) {
+            lastDecision = "waiting"
             mutableStatus.value = AutomationStatus.Waiting(desiredMode,
                 ((pending.dueAtMillis - now + 999) / 1_000))
             return
@@ -174,6 +204,7 @@ class AutomationController(
             desiredModeFor(presenceService.presence.value) != desiredMode
         ) {
             pendingChangeStore.clearPendingChange()
+            lastDecision = "state_changed"
             mutableStatus.value = AutomationStatus.Idle
             return
         }
@@ -194,10 +225,12 @@ class AutomationController(
 
     private suspend fun switchIfNeeded(desiredMode: RingMode) {
         val currentMode = refreshModeWithRetry().getOrElse {
+            lastDecision = "failed"
             mutableStatus.value = AutomationStatus.Failed(it.message ?: "Could not read Ring mode")
             return
         }
         if (currentMode == desiredMode) {
+            lastDecision = "already_correct"
             mutableStatus.value = AutomationStatus.Idle
             return
         }
@@ -210,11 +243,16 @@ class AutomationController(
         repeat(maxAttempts) { index ->
             val attempt = index + 1
             mutableStatus.value = AutomationStatus.Switching(desiredMode)
+            Diagnostics.info("mode_write_start", mapOf("desiredMode" to desiredMode, "attempt" to attempt))
             ringService.setMode(desiredMode).onSuccess {
+                Diagnostics.info("mode_write_end", mapOf("desiredMode" to desiredMode, "attempt" to attempt, "outcome" to "changed"))
                 notificationService.notifyModeChanged(desiredMode)
+                lastDecision = "changed"
                 mutableStatus.value = AutomationStatus.Idle
                 return
-            }.onFailure { lastFailure = it }
+            }.onFailure { lastFailure = it
+                Diagnostics.warn("mode_write_end", mapOf("attempt" to attempt, "outcome" to "retry", "reason" to errorReason(it)))
+            }
 
             if (attempt < maxAttempts) {
                 val delaySeconds = retryDelaySeconds(initialBackoff, index)
@@ -224,10 +262,12 @@ class AutomationController(
                     maxAttempts,
                     delaySeconds,
                 )
+                Diagnostics.warn("check_retry", mapOf("operation" to "mode_write", "attempt" to attempt, "backoffSeconds" to delaySeconds))
                 delay(delaySeconds * 1_000)
             }
         }
 
+        lastDecision = "failed"
         mutableStatus.value = AutomationStatus.Failed(
             lastFailure?.message ?: "Could not change Ring mode after $maxAttempts attempts",
         )
@@ -239,6 +279,9 @@ class AutomationController(
         repeat(attempts) { index ->
             val result = ringService.refreshMode()
             if (result.isSuccess || index == attempts - 1) return result
+            Diagnostics.warn("check_retry", mapOf("operation" to "mode_read", "attempt" to index + 1,
+                "backoffSeconds" to retryDelaySeconds(settings.modeChangeInitialBackoffSeconds, index),
+                "reason" to errorReason(result.exceptionOrNull()!!)))
             delay(retryDelaySeconds(settings.modeChangeInitialBackoffSeconds, index) * 1_000)
         }
         error("No Ring status attempt was made")

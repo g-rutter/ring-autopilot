@@ -8,6 +8,7 @@ import android.net.NetworkCapabilities
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
+import com.ringautopilot.app.logging.Diagnostics
 import com.ringautopilot.app.model.PresenceState
 import com.ringautopilot.app.storage.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +24,7 @@ class AndroidWifiPresenceService(
     private val wifiManager = context.applicationContext.getSystemService(WifiManager::class.java)
     private val mutablePresence = MutableStateFlow(PresenceState.UNKNOWN)
     private var started = false
+    private var lastReason: String? = null
 
     override val presence: StateFlow<PresenceState> = mutablePresence.asStateFlow()
 
@@ -37,15 +39,18 @@ class AndroidWifiPresenceService(
         try {
             connectivityManager.registerDefaultNetworkCallback(networkCallback)
             evaluate()
-        } catch (_: SecurityException) {
-            mutablePresence.value = PresenceState.UNKNOWN
+        } catch (error: SecurityException) {
+            Diagnostics.warn("presence_callback_failed", mapOf("reason" to "permission_denied"), error)
+            publish(PresenceState.UNKNOWN, "permission_denied")
         }
     }
 
     override fun stop() {
         if (!started) return
         started = false
-        runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+        try { connectivityManager.unregisterNetworkCallback(networkCallback) }
+        catch (error: SecurityException) { Diagnostics.debug("presence_callback_stop", mapOf("reason" to "permission_denied"), error) }
+        catch (error: IllegalArgumentException) { Diagnostics.debug("presence_callback_stop", mapOf("reason" to "not_registered"), error) }
     }
 
     override fun refresh() = evaluate()
@@ -63,7 +68,8 @@ class AndroidWifiPresenceService(
             // SSID before falling back instead of only falling back when WifiInfo is null.
             ?: ssidFrom(wifiManager.connectionInfo)
             ?: callbackWifiSsid
-    } catch (_: SecurityException) {
+    } catch (error: SecurityException) {
+        Diagnostics.warn("wifi_read_failed", mapOf("reason" to "permission_denied"), error)
         null
     }
 
@@ -72,7 +78,7 @@ class AndroidWifiPresenceService(
     private fun evaluate() {
         val homeSsid = settingsRepository.settings.value.homeWifiSsid
         if (homeSsid.isBlank()) {
-            mutablePresence.value = PresenceState.NOT_CONFIGURED
+            publish(PresenceState.NOT_CONFIGURED, "not_configured")
             return
         }
 
@@ -80,7 +86,7 @@ class AndroidWifiPresenceService(
             val activeNetwork = connectivityManager.activeNetwork
             val capabilities = activeNetwork?.let(connectivityManager::getNetworkCapabilities)
             if (capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true) {
-                mutablePresence.value = PresenceState.AWAY
+                publish(PresenceState.AWAY, if (activeNetwork == null) "no_active_network" else "non_wifi")
                 return
             }
 
@@ -88,14 +94,23 @@ class AndroidWifiPresenceService(
                 ?: ssidFrom(wifiManager.connectionInfo)
                 ?: callbackWifiSsid
 
-            mutablePresence.value = when {
-                connectedSsid == null -> PresenceState.UNKNOWN
-                connectedSsid == homeSsid -> PresenceState.HOME
-                else -> PresenceState.AWAY
+            when {
+                connectedSsid == null -> publish(PresenceState.UNKNOWN, "ssid_unavailable")
+                connectedSsid == homeSsid -> publish(PresenceState.HOME, "match")
+                else -> publish(PresenceState.AWAY, "mismatch")
             }
-        } catch (_: SecurityException) {
-            mutablePresence.value = PresenceState.UNKNOWN
+        } catch (error: SecurityException) {
+            Diagnostics.warn("presence_read_failed", mapOf("reason" to "permission_denied"), error)
+            publish(PresenceState.UNKNOWN, "permission_denied")
         }
+    }
+
+    private fun publish(state: PresenceState, reason: String) {
+        if (mutablePresence.value != state || lastReason != reason) {
+            Diagnostics.info("presence_changed", mapOf("presence" to state, "reason" to reason))
+            lastReason = reason
+        }
+        mutablePresence.value = state
     }
 
     private fun createNetworkCallback(): ConnectivityManager.NetworkCallback {

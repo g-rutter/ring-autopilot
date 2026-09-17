@@ -25,6 +25,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ringautopilot.app.automation.MonitoringWorkScheduler
+import com.ringautopilot.app.logging.Diagnostics
 import com.ringautopilot.app.ui.StatusScreen
 import com.ringautopilot.app.ui.StatusViewModel
 import com.ringautopilot.app.ui.StatusViewModelFactory
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Diagnostics.info("diagnostic_session", mapOf("version" to packageManager.getPackageInfo(packageName, 0).versionName))
         MonitoringWorkScheduler.schedule(this)
         setContent {
             RingAutopilotTheme {
@@ -60,6 +62,7 @@ private fun RingAutopilotApp(container: AppContainer) {
             when (event) {
                 Lifecycle.Event.ON_START -> {
                     backgroundLocationGranted = hasBackgroundLocation(context)
+                    Diagnostics.info("location_services", mapOf("enabled" to isLocationEnabled(context), "backgroundGranted" to backgroundLocationGranted))
                     viewModel.refreshLastCheck()
                     viewModel.startAutomation()
                 }
@@ -73,6 +76,9 @@ private fun RingAutopilotApp(container: AppContainer) {
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
         onResult = { result ->
+            result.forEach { (permission, granted) ->
+                Diagnostics.info("permission_result", mapOf("permission" to permission.substringAfterLast('.'), "granted" to granted))
+            }
             viewModel.refreshPresence()
             if (useWifiAfterPermissions) {
                 val locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
@@ -101,7 +107,10 @@ private fun RingAutopilotApp(container: AppContainer) {
     )
     val backgroundPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
-        onResult = { backgroundLocationGranted = hasBackgroundLocation(context) },
+        onResult = { granted ->
+            backgroundLocationGranted = hasBackgroundLocation(context)
+            Diagnostics.info("permission_result", mapOf("permission" to "ACCESS_BACKGROUND_LOCATION", "granted" to granted))
+        },
     )
 
     StatusScreen(
@@ -109,10 +118,16 @@ private fun RingAutopilotApp(container: AppContainer) {
         requestPermissions = {
             val missing = missingPermissions(context, includeNotifications = true)
             when {
-                missing.isNotEmpty() -> permissionLauncher.launch(missing.toTypedArray())
-                !isLocationEnabled(context) -> context.startActivity(
+                missing.isNotEmpty() -> {
+                    missing.forEach { Diagnostics.info("permission_request", mapOf("permission" to it.substringAfterLast('.'))) }
+                    permissionLauncher.launch(missing.toTypedArray())
+                }
+                !isLocationEnabled(context) -> {
+                    Diagnostics.warn("location_services", mapOf("enabled" to false))
+                    context.startActivity(
                     Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS),
-                )
+                    )
+                }
                 else -> {
                     lastToast?.cancel()
                     lastToast = Toast.makeText(
@@ -133,22 +148,24 @@ private fun RingAutopilotApp(container: AppContainer) {
                 ).also { it.show() }
             } else {
                 useWifiAfterPermissions = true
-                permissionLauncher.launch(
-                    missingPermissions(context, includeNotifications = false).toTypedArray(),
-                )
+                val missing = missingPermissions(context, includeNotifications = false)
+                missing.forEach { Diagnostics.info("permission_request", mapOf("permission" to it.substringAfterLast('.'))) }
+                permissionLauncher.launch(missing.toTypedArray())
             }
         },
         backgroundLocationGranted = backgroundLocationGranted,
         requestBackgroundLocation = {
             if (!hasWifiPermissions(context)) {
-                permissionLauncher.launch(
-                    missingPermissions(context, includeNotifications = false).toTypedArray(),
-                )
+                val missing = missingPermissions(context, includeNotifications = false)
+                missing.forEach { Diagnostics.info("permission_request", mapOf("permission" to it.substringAfterLast('.'))) }
+                permissionLauncher.launch(missing.toTypedArray())
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Diagnostics.info("permission_request", mapOf("permission" to "ACCESS_BACKGROUND_LOCATION", "via" to "settings"))
                 context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                     data = Uri.parse("package:${context.packageName}")
                 })
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                Diagnostics.info("permission_request", mapOf("permission" to "ACCESS_BACKGROUND_LOCATION"))
                 backgroundPermissionLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
             }
         },

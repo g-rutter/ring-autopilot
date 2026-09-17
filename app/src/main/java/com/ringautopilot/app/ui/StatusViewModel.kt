@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ringautopilot.app.AppContainer
+import com.ringautopilot.app.logging.Diagnostics
+import com.ringautopilot.app.logging.errorReason
+import com.ringautopilot.app.logging.operationId
 import com.ringautopilot.app.automation.AutomationController
 import com.ringautopilot.app.automation.AutomationStatus
 import com.ringautopilot.app.automation.CheckOrigin
@@ -131,10 +134,13 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun refreshRingMode() {
+        val opId = operationId()
+        Diagnostics.info("user_action_start", mapOf("action" to "refresh_ring", "opId" to opId))
         viewModelScope.launch {
             mutableRingValidation.value = RingValidationState("Checking Ring credentials and current mode…", true)
             container.ringService.refreshMode()
                 .onSuccess { mode ->
+                    Diagnostics.info("user_action_end", mapOf("action" to "refresh_ring", "opId" to opId, "outcome" to "success", "mode" to mode))
                     container.statusStore.saveCameraMode(mode)
                     container.statusStore.saveCheck("Ring status · ${mode.displayName()}", false)
                     RingWidgetProvider.updateAll(container.appContext)
@@ -143,6 +149,7 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
                     )
                 }
                 .onFailure { error ->
+                    Diagnostics.warn("user_action_end", mapOf("action" to "refresh_ring", "opId" to opId, "outcome" to "failure", "reason" to errorReason(error)), error)
                     container.statusStore.saveCheck("Ring status unavailable", true)
                     RingWidgetProvider.updateAll(container.appContext)
                     mutableRingValidation.value = RingValidationState(
@@ -156,6 +163,7 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     fun setAutoEnabled(enabled: Boolean) {
         val mode = if (enabled) ControlMode.AUTO else ControlMode.MANUAL
         if (container.settingsRepository.settings.value.controlMode == mode) return
+        Diagnostics.info("user_action_end", mapOf("action" to "auto_toggle", "outcome" to "changed", "enabled" to enabled))
         container.settingsRepository.updateControlMode(mode)
         container.statusStore.saveControlMode(mode)
         RingWidgetProvider.updateAll(container.appContext)
@@ -167,10 +175,13 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     fun setRingMode(ringMode: RingMode) {
         require(ringMode == RingMode.AWAY || ringMode == RingMode.DISARMED)
         setAutoEnabled(false)
+        val opId = operationId()
+        Diagnostics.info("user_action_start", mapOf("action" to "force_mode", "opId" to opId, "desiredMode" to ringMode))
         viewModelScope.launch {
             mutableRingValidation.value = RingValidationState("Requesting ${ringMode.displayName()}…", true)
             container.ringService.setMode(ringMode)
                 .onSuccess {
+                    Diagnostics.info("user_action_end", mapOf("action" to "force_mode", "opId" to opId, "outcome" to "success", "mode" to ringMode))
                     container.statusStore.saveCameraMode(ringMode)
                     container.statusStore.saveCheck("Force ${ringMode.forceLabel()} · Confirmed", false)
                     RingWidgetProvider.updateAll(container.appContext)
@@ -179,6 +190,7 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
                     )
                 }
                 .onFailure { error ->
+                    Diagnostics.warn("user_action_end", mapOf("action" to "force_mode", "opId" to opId, "outcome" to "failure", "reason" to errorReason(error)), error)
                     container.statusStore.saveCheck("Force ${ringMode.forceLabel()} failed: ${error.userMessage()}", true)
                     RingWidgetProvider.updateAll(container.appContext)
                     mutableRingValidation.value = RingValidationState(

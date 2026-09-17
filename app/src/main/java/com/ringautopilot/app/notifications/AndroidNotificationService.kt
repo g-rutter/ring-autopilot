@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.ringautopilot.app.R
+import com.ringautopilot.app.logging.Diagnostics
 import com.ringautopilot.app.model.EventSummary
 import com.ringautopilot.app.model.RingMode
 
@@ -46,7 +47,10 @@ class AndroidNotificationService(private val context: Context) : NotificationSer
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
-        ) return
+        ) {
+            Diagnostics.warn("notification_suppressed", mapOf("reason" to "permission_denied"))
+            return
+        }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
@@ -55,7 +59,13 @@ class AndroidNotificationService(private val context: Context) : NotificationSer
             .setAutoCancel(true)
             .build()
 
-        NotificationManagerCompat.from(context).notify(id, notification)
+        try { NotificationManagerCompat.from(context).notify(id, notification) }
+        catch (error: SecurityException) {
+            Diagnostics.warn("notification_failed", mapOf("reason" to "permission_denied"), error)
+        }
+        catch (error: RuntimeException) {
+            Diagnostics.warn("notification_failed", mapOf("reason" to "unexpected_error"), error)
+        }
     }
 
     private val RingMode.displayName: String

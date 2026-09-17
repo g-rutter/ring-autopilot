@@ -10,6 +10,9 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.Constraints
+import androidx.work.Data
+import com.ringautopilot.app.logging.Diagnostics
+import com.ringautopilot.app.logging.errorReason
 import com.ringautopilot.app.AppContainer
 import com.ringautopilot.app.automation.CheckOrigin
 import com.ringautopilot.app.widget.RingWidgetProvider
@@ -23,39 +26,70 @@ class MonitoringWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
-        val container = AppContainer(applicationContext)
-        val controller = AutomationController(
+        val started = System.currentTimeMillis()
+        val task = inputData.getString("task") ?: "ring_monitor"
+        Diagnostics.info("work_start", mapOf("task" to task, "workId" to id, "attempt" to runAttemptCount))
+        var outcome = "retry"
+        var reason = "unexpected_error"
+        var container: AppContainer? = null
+        var controller: AutomationController? = null
+        return try {
+            val activeContainer = AppContainer(applicationContext)
+            container = activeContainer
+            val activeController = AutomationController(
             scope = CoroutineScope(kotlin.coroutines.coroutineContext),
-            presenceService = container.presenceService,
-            ringService = container.ringService,
-            settingsRepository = container.settingsRepository,
-            notificationService = container.notificationService,
-            pendingChangeStore = container.statusStore,
+            presenceService = activeContainer.presenceService,
+            ringService = activeContainer.ringService,
+            settingsRepository = activeContainer.settingsRepository,
+            notificationService = activeContainer.notificationService,
+            pendingChangeStore = activeContainer.statusStore,
             schedulePendingWork = { delayMillis, replace ->
                 MonitoringWorkScheduler.schedulePending(applicationContext, delayMillis, replace)
             },
             onCheckFinished = { presence, status, origin ->
                 val result = checkResult(presence, status)
-                container.statusStore.saveCheck(result.summary, result.problem,
+                activeContainer.statusStore.saveCheck(result.summary, result.problem,
                     automated = origin == CheckOrigin.AUTOMATIC)
                 RingWidgetProvider.updateAll(applicationContext)
             },
         )
-        return try {
-            controller.runOnce()
-            container.statusStore.saveControlMode(container.settingsRepository.settings.value.controlMode)
-            container.statusStore.saveCameraMode(container.ringService.mode.value)
+            controller = activeController
+            activeController.runOnce()
+            activeContainer.statusStore.saveControlMode(activeContainer.settingsRepository.settings.value.controlMode)
+            activeContainer.statusStore.saveCameraMode(activeContainer.ringService.mode.value)
             RingWidgetProvider.updateAll(applicationContext)
-            if (controller.status.value is AutomationStatus.Failed) Result.retry() else Result.success()
+            if (activeController.status.value is AutomationStatus.Failed) {
+                reason = "check_failed"
+                Result.retry()
+            } else {
+                val presence = activeContainer.presenceService.presence.value
+                outcome = if (activeController.status.value is AutomationStatus.Waiting ||
+                    activeController.status.value is AutomationStatus.ManualOverride ||
+                    presence == com.ringautopilot.app.model.PresenceState.UNKNOWN ||
+                    presence == com.ringautopilot.app.model.PresenceState.NOT_CONFIGURED) "skipped" else "success"
+                reason = when (activeController.status.value) {
+                    is AutomationStatus.Waiting -> "waiting"
+                    AutomationStatus.ManualOverride -> "auto_off"
+                    else -> if (outcome == "skipped") "no_wifi" else "completed"
+                }
+                Result.success()
+            }
         } catch (error: CancellationException) {
+            outcome = "skipped"
+            reason = "cancelled"
             throw error
         } catch (error: Exception) {
-            container.statusStore.saveCheck("Wi-Fi automation failed: ${error.message ?: "Unknown error"}", true,
+            reason = errorReason(error)
+            Diagnostics.error("work_exception", mapOf("task" to task, "workId" to id, "reason" to reason), error)
+            container?.statusStore?.saveCheck("Wi-Fi automation failed", true,
                 automated = true)
             RingWidgetProvider.updateAll(applicationContext)
             Result.retry()
         } finally {
-            controller.stop()
+            controller?.stop()
+            Diagnostics.info("work_end", mapOf("task" to task, "workId" to id,
+                "outcome" to outcome, "reason" to reason,
+                "durationMs" to System.currentTimeMillis() - started))
         }
     }
 }
@@ -70,12 +104,14 @@ object MonitoringWorkScheduler {
             .build()
         val request = PeriodicWorkRequestBuilder<MonitoringWorker>(15, TimeUnit.MINUTES)
             .setConstraints(constraints)
+            .setInputData(Data.Builder().putString("task", "periodic").build())
             .build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             UNIQUE_WORK_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
             request,
         )
+        Diagnostics.info("work_enqueue", mapOf("task" to "periodic", "workName" to UNIQUE_WORK_NAME, "policy" to "keep", "delayMs" to 0, "constraints" to "connected", "workId" to request.id))
     }
 
     fun schedulePending(context: Context, delayMillis: Long, replace: Boolean) {
@@ -83,9 +119,11 @@ object MonitoringWorkScheduler {
             .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
             .setConstraints(Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setInputData(Data.Builder().putString("task", "pending").build())
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
             PENDING_WORK_NAME, if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request,
         )
+        Diagnostics.info("work_enqueue", mapOf("task" to "pending", "workName" to PENDING_WORK_NAME, "policy" to if (replace) "replace" else "keep", "delayMs" to delayMillis, "constraints" to "connected", "workId" to request.id))
     }
 }
