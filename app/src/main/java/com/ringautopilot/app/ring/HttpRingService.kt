@@ -33,7 +33,7 @@ class HttpRingService(
         Settings.Secure.ANDROID_ID,
     ).orEmpty()
     private val mutableMode = MutableStateFlow(RingMode.UNAVAILABLE)
-    private var accessToken: String? = null
+    private val accessTokenCache = AccessTokenCache()
 
     override val mode: StateFlow<RingMode> = mutableMode.asStateFlow()
 
@@ -121,6 +121,10 @@ class HttpRingService(
         body: String?,
         retryAuth: Boolean,
     ): JSONObject {
+        val requestAccessToken = accessTokenCache.getOrAuthenticate {
+            Diagnostics.info("auth_refresh", mapOf("reason" to "access_token_missing"))
+            authenticate()
+        }
         val started = System.currentTimeMillis()
         val endpoint = endpointTemplate(url)
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -130,7 +134,7 @@ class HttpRingService(
             setRequestProperty("Accept", "application/json")
             setRequestProperty("User-Agent", "android:com.ringapp")
             setRequestProperty("hardware_id", hardwareId)
-            accessToken?.let { setRequestProperty("Authorization", "Bearer $it") }
+            setRequestProperty("Authorization", "Bearer $requestAccessToken")
             if (body != null) {
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
@@ -143,8 +147,7 @@ class HttpRingService(
                 "durationMs" to System.currentTimeMillis() - started))
             if (status == HttpURLConnection.HTTP_UNAUTHORIZED && retryAuth) {
                 Diagnostics.warn("auth_refresh", mapOf("endpoint" to endpoint, "reason" to "http_401"))
-                accessToken = null
-                authenticate()
+                accessTokenCache.replaceAfterRejection(requestAccessToken, ::authenticate)
                 return requestBlocking(url, method, body, retryAuth = false)
             }
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
@@ -160,7 +163,7 @@ class HttpRingService(
         }
     }
 
-    private fun authenticate() {
+    private fun authenticate(): String {
         val stored = kotlinx.coroutines.runBlocking { tokenStore.readRefreshToken() }
             ?: error("Ring refresh token is not configured")
         val rawToken = decodeWrappedToken(stored)
@@ -173,7 +176,7 @@ class HttpRingService(
             "${URLEncoder.encode(key, "UTF-8")}=${URLEncoder.encode(value, "UTF-8")}"
         }
         val auth = postJson("https://oauth.ring.com/oauth/token", form, "application/x-www-form-urlencoded")
-        accessToken = auth.getString("access_token")
+        val newAccessToken = auth.getString("access_token")
         auth.optString("refresh_token").takeIf { it.isNotBlank() }?.let { updated ->
             val wrapped = Base64.getEncoder().encodeToString(
                 JSONObject().put("rt", updated).put("hid", hardwareId).toString().toByteArray(),
@@ -187,8 +190,9 @@ class HttpRingService(
                 .put("metadata", JSONObject().put("api_version", 11).put("device_model", "ring-autopilot"))
                 .put("os", "android")).toString(),
             "application/json",
-            authorization = accessToken,
+            authorization = newAccessToken,
         )
+        return newAccessToken
     }
 
     private fun postJson(url: String, body: String, contentType: String, authorization: String? = null): JSONObject {
