@@ -1,5 +1,7 @@
 package com.ringautopilot.app.ui
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -38,6 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -263,11 +267,13 @@ private fun ConfigurationPage(
     var radius by rememberSaveable(state.homeGeofenceRadiusMeters) { mutableFloatStateOf(state.homeGeofenceRadiusMeters) }
     var refreshToken by rememberSaveable { mutableStateOf("") }
     var locationId by rememberSaveable(state.ringLocationId) { mutableStateOf(state.ringLocationId) }
+    var mapGestureActive by remember { mutableStateOf(false) }
     val valid = (wifiEnabled || geofenceEnabled) && (!wifiEnabled || ssid.isNotBlank()) &&
         (!geofenceEnabled || (latitude != null && longitude != null && foregroundLocationGranted &&
             backgroundLocationGranted && locationServicesEnabled))
 
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState(), enabled = !mapGestureActive)
+        .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Choose one or both ways to decide whether this phone is home.",
             style = MaterialTheme.typography.bodyLarge)
@@ -300,7 +306,8 @@ private fun ConfigurationPage(
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 GeofenceMapPicker(latitude, longitude, radius, foregroundLocationGranted,
                     onPointChanged = { lat, lon -> latitude = lat; longitude = lon },
-                    requestCurrentLocation = requestCurrentLocation)
+                    requestCurrentLocation = requestCurrentLocation,
+                    onGestureActiveChanged = { mapGestureActive = it })
                 Text("Radius: ${radius.roundToInt()} m")
                 Slider(radius, { radius = (it / 100f).roundToInt() * 100f },
                     valueRange = AutomationSettings.MIN_GEOFENCE_RADIUS_METERS..
@@ -375,6 +382,7 @@ private fun GeofenceMapPicker(
     locationGranted: Boolean,
     onPointChanged: (Double, Double) -> Unit,
     requestCurrentLocation: ((Double, Double) -> Unit) -> Unit,
+    onGestureActiveChanged: (Boolean) -> Unit,
 ) {
     val fallback = LatLng(51.5074, -0.1278)
     val initial = if (latitude != null && longitude != null) LatLng(latitude, longitude) else fallback
@@ -382,7 +390,19 @@ private fun GeofenceMapPicker(
     val scope = rememberCoroutineScope()
     val point = if (latitude != null && longitude != null) LatLng(latitude, longitude) else null
     GoogleMap(
-        modifier = Modifier.fillMaxWidth().height(260.dp),
+        modifier = Modifier.fillMaxWidth().height(260.dp).pointerInput(Unit) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                onGestureActiveChanged(true)
+                try {
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                    } while (event.changes.any { it.pressed })
+                } finally {
+                    onGestureActiveChanged(false)
+                }
+            }
+        },
         cameraPositionState = camera,
         properties = MapProperties(isMyLocationEnabled = locationGranted),
         uiSettings = MapUiSettings(myLocationButtonEnabled = false),
