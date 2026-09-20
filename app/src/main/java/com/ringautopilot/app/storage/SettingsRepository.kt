@@ -18,7 +18,11 @@ interface SettingsRepository {
     fun updateControlMode(mode: ControlMode)
 }
 
-class PreferencesSettingsRepository(context: Context) : SettingsRepository {
+class PreferencesSettingsRepository(
+    context: Context,
+    private val onGeofenceInvalidated: () -> Unit = {},
+    private val onGeofenceReconcileRequested: () -> Unit = {},
+) : SettingsRepository {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val mutableSettings = MutableStateFlow(readSettings())
 
@@ -44,8 +48,11 @@ class PreferencesSettingsRepository(context: Context) : SettingsRepository {
     }
 
     override fun updateGeofencePresenceEnabled(enabled: Boolean) {
+        if (mutableSettings.value.geofencePresenceEnabled == enabled) return
         preferences.edit().putBoolean(KEY_GEOFENCE_PRESENCE_ENABLED, enabled).apply()
         mutableSettings.value = mutableSettings.value.copy(geofencePresenceEnabled = enabled)
+        onGeofenceInvalidated()
+        onGeofenceReconcileRequested()
     }
 
     override fun updateHomeGeofence(
@@ -57,6 +64,9 @@ class PreferencesSettingsRepository(context: Context) : SettingsRepository {
         require(longitude in -180.0..180.0) { "Longitude is out of range" }
         require(radiusMeters in AutomationSettings.MIN_GEOFENCE_RADIUS_METERS..
             AutomationSettings.MAX_GEOFENCE_RADIUS_METERS) { "Geofence radius is out of range" }
+        val previous = mutableSettings.value
+        if (previous.homeLatitude == latitude && previous.homeLongitude == longitude &&
+            previous.homeGeofenceRadiusMeters == radiusMeters) return
         preferences.edit()
             .putLong(KEY_HOME_LATITUDE, latitude.toBits())
             .putLong(KEY_HOME_LONGITUDE, longitude.toBits())
@@ -67,6 +77,8 @@ class PreferencesSettingsRepository(context: Context) : SettingsRepository {
             homeLongitude = longitude,
             homeGeofenceRadiusMeters = radiusMeters,
         )
+        onGeofenceInvalidated()
+        onGeofenceReconcileRequested()
     }
 
     override fun updateRingLocationId(locationId: String) {

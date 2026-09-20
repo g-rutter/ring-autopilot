@@ -12,11 +12,26 @@ import com.ringautopilot.app.storage.EncryptedTokenStore
 import com.ringautopilot.app.storage.SettingsRepository
 import com.ringautopilot.app.storage.TokenStore
 import com.ringautopilot.app.storage.StatusStore
+import com.ringautopilot.app.geofence.AndroidGeofenceManager
+import com.ringautopilot.app.geofence.GeofenceManager
+import com.ringautopilot.app.geofence.GeofencePresenceStore
+import com.ringautopilot.app.geofence.PreferencesGeofencePresenceStore
+import com.ringautopilot.app.geofence.GeofenceWorkScheduler
 
 class AppContainer(context: Context) {
     val appContext: Context = context.applicationContext
     val statusStore = StatusStore(context)
-    val settingsRepository: SettingsRepository = PreferencesSettingsRepository(context)
+    val geofencePresenceStore: GeofencePresenceStore = PreferencesGeofencePresenceStore(context)
+    val settingsRepository: SettingsRepository = PreferencesSettingsRepository(
+        context = context,
+        onGeofenceInvalidated = { geofencePresenceStore.clear() },
+        onGeofenceReconcileRequested = { GeofenceWorkScheduler.scheduleRegistration(context, "settings_changed") },
+    )
+    val geofenceManager: GeofenceManager = AndroidGeofenceManager(
+        context,
+        settingsRepository,
+        geofencePresenceStore,
+    )
     val tokenStore: TokenStore = EncryptedTokenStore(context)
     val presenceService: PresenceService = AndroidWifiPresenceService(context, settingsRepository)
     val ringService: RingService = HttpRingService(context, settingsRepository, tokenStore)

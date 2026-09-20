@@ -26,6 +26,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ringautopilot.app.automation.MonitoringWorkScheduler
 import com.ringautopilot.app.logging.Diagnostics
+import com.ringautopilot.app.geofence.GeofenceWorkScheduler
 import com.ringautopilot.app.ui.StatusScreen
 import com.ringautopilot.app.ui.StatusViewModel
 import com.ringautopilot.app.ui.StatusViewModelFactory
@@ -38,6 +39,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Diagnostics.info("diagnostic_session", mapOf("version" to packageManager.getPackageInfo(packageName, 0).versionName))
         MonitoringWorkScheduler.schedule(this)
+        GeofenceWorkScheduler.scheduleRegistration(this, "app_start")
         setContent {
             RingAutopilotTheme {
                 RingAutopilotApp(container)
@@ -64,6 +66,7 @@ private fun RingAutopilotApp(container: AppContainer) {
                     backgroundLocationGranted = hasBackgroundLocation(context)
                     Diagnostics.info("location_services", mapOf("enabled" to isLocationEnabled(context), "backgroundGranted" to backgroundLocationGranted))
                     viewModel.refreshLastCheck()
+                    GeofenceWorkScheduler.scheduleRegistration(context, "app_resume")
                     viewModel.startAutomation()
                 }
                 Lifecycle.Event.ON_STOP -> viewModel.stopAutomation()

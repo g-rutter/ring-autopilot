@@ -97,6 +97,7 @@ class MonitoringWorker(
 object MonitoringWorkScheduler {
     private const val UNIQUE_WORK_NAME = "ring-presence-monitoring"
     private const val PENDING_WORK_NAME = "ring-pending-change"
+    private const val GEOFENCE_TRANSITION_WORK_NAME = "ring-geofence-transition"
 
     fun schedule(context: Context) {
         val constraints = Constraints.Builder()
@@ -125,5 +126,26 @@ object MonitoringWorkScheduler {
             PENDING_WORK_NAME, if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request,
         )
         Diagnostics.info("work_enqueue", mapOf("task" to "pending", "workName" to PENDING_WORK_NAME, "policy" to if (replace) "replace" else "keep", "delayMs" to delayMillis, "constraints" to "connected", "workId" to request.id))
+    }
+
+    fun scheduleGeofenceTransition(context: Context) {
+        val request = OneTimeWorkRequestBuilder<MonitoringWorker>()
+            .setConstraints(Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setInputData(Data.Builder().putString("task", "geofence_transition").build())
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            GEOFENCE_TRANSITION_WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            request,
+        )
+        Diagnostics.info("work_enqueue", mapOf(
+            "task" to "geofence_transition",
+            "workName" to GEOFENCE_TRANSITION_WORK_NAME,
+            "policy" to "replace",
+            "delayMs" to 0,
+            "constraints" to "connected",
+            "workId" to request.id,
+        ))
     }
 }

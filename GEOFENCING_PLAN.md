@@ -8,13 +8,15 @@ Implementation started 2026-09-20.
 
 - [x] Model and pure aggregation: detector settings, validated geofence definition,
   legacy Wi-Fi migration, conservative presence aggregation, and unit tests.
-- [ ] Geofence infrastructure.
+- [x] Geofence infrastructure: Play services registration, persisted transition
+  state, safe event parsing, transition/restore receivers, recovery work, and
+  manifest wiring.
 - [ ] Presence integration.
 - [ ] Configuration and permission UX.
 - [ ] Dashboard, widget-facing summaries, and documentation.
 - [ ] Device acceptance verification.
 
-The Android unit-test suite passes with 24 tests after the first milestone.
+The Android unit-test suite passes with 30 tests after the second milestone.
 
 ## Objective
 
