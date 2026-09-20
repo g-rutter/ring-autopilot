@@ -22,13 +22,32 @@ class AutomationSettingsTest {
 
     @Test
     fun `geofence definition validates coordinates and radius`() {
-        assertTrue(AutomationSettings(homeLatitude = 90.0, homeLongitude = 180.0).hasValidGeofence)
+        assertTrue(AutomationSettings(
+            homeLatitude = 90.0,
+            homeLongitude = 180.0,
+            homeGeofenceRadiusMeters = 50f,
+        ).hasValidGeofence)
+        assertTrue(AutomationSettings(
+            homeLatitude = 0.0,
+            homeLongitude = 0.0,
+            homeGeofenceRadiusMeters = 500f,
+        ).hasValidGeofence)
         assertFalse(AutomationSettings(homeLatitude = 90.1, homeLongitude = 0.0).hasValidGeofence)
         assertFalse(AutomationSettings(homeLatitude = 0.0, homeLongitude = 180.1).hasValidGeofence)
         assertFalse(AutomationSettings(
             homeLatitude = 0.0,
             homeLongitude = 0.0,
-            homeGeofenceRadiusMeters = 99f,
+            homeGeofenceRadiusMeters = 49f,
+        ).hasValidGeofence)
+        assertFalse(AutomationSettings(
+            homeLatitude = 0.0,
+            homeLongitude = 0.0,
+            homeGeofenceRadiusMeters = 75f,
+        ).hasValidGeofence)
+        assertFalse(AutomationSettings(
+            homeLatitude = 0.0,
+            homeLongitude = 0.0,
+            homeGeofenceRadiusMeters = 550f,
         ).hasValidGeofence)
     }
 }

@@ -39,7 +39,7 @@ data class AutomationSettings(
     val hasValidGeofence: Boolean
         get() = homeLatitude != null && homeLatitude in -90.0..90.0 &&
             homeLongitude != null && homeLongitude in -180.0..180.0 &&
-            homeGeofenceRadiusMeters in MIN_GEOFENCE_RADIUS_METERS..MAX_GEOFENCE_RADIUS_METERS
+            isValidGeofenceRadius(homeGeofenceRadiusMeters)
 
     val hasConfiguredPresence: Boolean
         get() = (wifiPresenceEnabled && homeWifiSsid.isNotBlank()) ||
@@ -47,8 +47,13 @@ data class AutomationSettings(
 
     companion object {
         const val DEFAULT_GEOFENCE_RADIUS_METERS = 100f
-        const val MIN_GEOFENCE_RADIUS_METERS = 100f
-        const val MAX_GEOFENCE_RADIUS_METERS = 1_000f
+        const val MIN_GEOFENCE_RADIUS_METERS = 50f
+        const val MAX_GEOFENCE_RADIUS_METERS = 500f
+        const val GEOFENCE_RADIUS_STEP_METERS = 50f
+
+        fun isValidGeofenceRadius(radiusMeters: Float): Boolean =
+            radiusMeters in MIN_GEOFENCE_RADIUS_METERS..MAX_GEOFENCE_RADIUS_METERS &&
+                radiusMeters % GEOFENCE_RADIUS_STEP_METERS == 0f
     }
 }
 

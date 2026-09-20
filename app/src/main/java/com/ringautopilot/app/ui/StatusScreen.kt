@@ -309,10 +309,13 @@ private fun ConfigurationPage(
                     requestCurrentLocation = requestCurrentLocation,
                     onGestureActiveChanged = { mapGestureActive = it })
                 Text("Radius: ${radius.roundToInt()} m")
-                Slider(radius, { radius = (it / 100f).roundToInt() * 100f },
+                Slider(radius, { radius = (it / AutomationSettings.GEOFENCE_RADIUS_STEP_METERS)
+                    .roundToInt() * AutomationSettings.GEOFENCE_RADIUS_STEP_METERS },
                     valueRange = AutomationSettings.MIN_GEOFENCE_RADIUS_METERS..
                         AutomationSettings.MAX_GEOFENCE_RADIUS_METERS,
-                    steps = 8)
+                    steps = ((AutomationSettings.MAX_GEOFENCE_RADIUS_METERS -
+                        AutomationSettings.MIN_GEOFENCE_RADIUS_METERS) /
+                        AutomationSettings.GEOFENCE_RADIUS_STEP_METERS).roundToInt() - 1)
                 when {
                     !foregroundLocationGranted -> OutlinedButton(onClick = requestForegroundLocation) {
                         Text("Allow Precise location")

@@ -118,7 +118,7 @@ Defaults and migration:
 
 - Existing installs with a saved SSID migrate to Wi-Fi enabled and geofencing disabled, preserving current behavior.
 - New installs initially have neither detector fully configured. The Configuration page prevents completion until at least one detector is enabled and valid.
-- Default the radius to 100 m and constrain it to 100–1,000 m. Android recommends a minimum radius around 100–150 m for reliable geofencing; 100 m is the smallest recommended choice and avoids making the default area larger than necessary.
+- Default the radius to 100 m and allow 50–500 m in 50 m increments. Android recommends a radius around 100–150 m or larger for reliable geofencing, so the UI retains 100 m as its default while allowing a smaller user-selected boundary.
 - Store coordinates only in private app preferences. Do not copy them into diagnostics, status summaries, notifications, intents beyond the explicit in-app `PendingIntent`, or widget text.
 
 Persist the latest geofence signal separately from configuration, including state and update time. The timestamp is for UI/diagnostics, not a short expiry: a transition remains the best known state until a newer transition, a registration reset, or reconciliation changes it. Clear it to `UNKNOWN` whenever the geofence centre/radius changes, geofencing is disabled, permission is lost, or registration becomes unavailable.
@@ -170,7 +170,7 @@ Rework the Home presence section into two feature cards:
 ### Geofencing
 
 - **Use geofencing** switch.
-- When enabled, show a compact Google Maps Compose picker with one marker, a translucent circular overlay, a current-location/recenter action, and a simple radius control (default 100 m; 100–1,000 m).
+- When enabled, show a compact Google Maps Compose picker with one marker, a translucent circular overlay, a current-location/recenter action, and a simple radius control (default 100 m; 50–500 m in 50 m increments).
 - Tapping the map moves the centre; no address lookup is required.
 - Explain that the location is stored on device and background location is needed for enter/exit automation while the app is closed.
 - Request fine location first and background location second, only after the user opts into geofencing. On Android 11+, direct the user to the app settings screen for “Allow all the time” after a clear rationale.
@@ -309,7 +309,7 @@ Alternatives considered but not selected:
 
 ### 3. Radius control
 
-**Decision: provide a user-adjustable radius from 100–1,000 m, defaulting to 100 m.** The lower bound is primarily an accuracy/reliability constraint. Geofencing deliberately uses battery-efficient location sources, and Android documents typical Wi-Fi location accuracy around 20–50 m with potentially much worse accuracy when Wi-Fi is unavailable. A smaller fence is more likely to flap or report a false exit while the phone is still at home.
+**Decision: provide a user-adjustable radius from 50–500 m in 50 m increments, defaulting to 100 m.** The 50 m option gives users with compact sites finer control, while the 100 m default reflects that geofencing deliberately uses battery-efficient location sources and can be less accurate when Wi-Fi is unavailable. Smaller fences are more likely to flap or report a false exit while the phone is still at home.
 
 ## References
 

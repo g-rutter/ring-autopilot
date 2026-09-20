@@ -62,8 +62,9 @@ class PreferencesSettingsRepository(
     ) {
         require(latitude in -90.0..90.0) { "Latitude is out of range" }
         require(longitude in -180.0..180.0) { "Longitude is out of range" }
-        require(radiusMeters in AutomationSettings.MIN_GEOFENCE_RADIUS_METERS..
-            AutomationSettings.MAX_GEOFENCE_RADIUS_METERS) { "Geofence radius is out of range" }
+        require(AutomationSettings.isValidGeofenceRadius(radiusMeters)) {
+            "Geofence radius must be 50–500 m in 50 m increments"
+        }
         val previous = mutableSettings.value
         if (previous.homeLatitude == latitude && previous.homeLongitude == longitude &&
             previous.homeGeofenceRadiusMeters == radiusMeters) return
@@ -107,6 +108,9 @@ class PreferencesSettingsRepository(
             homeGeofenceRadiusMeters = preferences.getFloat(
                 KEY_HOME_GEOFENCE_RADIUS_METERS,
                 AutomationSettings.DEFAULT_GEOFENCE_RADIUS_METERS,
+            ).coerceIn(
+                AutomationSettings.MIN_GEOFENCE_RADIUS_METERS,
+                AutomationSettings.MAX_GEOFENCE_RADIUS_METERS,
             ),
             ringLocationId = preferences.getString(KEY_RING_LOCATION_ID, "").orEmpty(),
             controlMode = when (preferences.getString(KEY_CONTROL_MODE, null)) {

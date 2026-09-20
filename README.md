@@ -9,7 +9,7 @@ and may require maintenance if Ring changes that API.
 
 - Enable Wi-Fi presence, geofence presence, or both independently.
 - Choose a home Wi-Fi SSID manually or use the currently connected SSID.
-- Pick one circular home geofence on a Google map with a 100–1,000 m radius.
+- Pick one circular home geofence on a Google map with a 50–500 m radius in 50 m increments.
 - Treat either Home signal as Home; Ring enters Away only when every enabled
   detector explicitly reports Away. Unknown or unavailable signals never arm.
 - Store a Ring refresh token encrypted with a device-local Android Keystore
