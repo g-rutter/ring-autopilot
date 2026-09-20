@@ -25,6 +25,8 @@ import kotlinx.coroutines.launch
 
 data class StatusUiState(
     val homeWifiSsid: String = "",
+    val wifiPresenceEnabled: Boolean = false,
+    val geofencePresenceEnabled: Boolean = false,
     val isSetupComplete: Boolean = false,
     val ringLocationId: String = "",
     val presence: PresenceState = PresenceState.UNKNOWN,
@@ -79,7 +81,9 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     ) { settings, presence, ringMode, automationStatus, validation ->
         StatusUiState(
             homeWifiSsid = settings.homeWifiSsid,
-            isSetupComplete = settings.homeWifiSsid.isNotBlank(),
+            wifiPresenceEnabled = settings.wifiPresenceEnabled,
+            geofencePresenceEnabled = settings.geofencePresenceEnabled,
+            isSetupComplete = settings.hasConfiguredPresence,
             ringLocationId = settings.ringLocationId,
             presence = presence,
             ringMode = ringMode,
@@ -111,6 +115,9 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
 
     fun saveHomeWifiSsid(ssid: String) {
         container.settingsRepository.updateHomeWifiSsid(ssid)
+        // The current UI is Wi-Fi-only until the feature-card configuration work lands.
+        // Treat saving its SSID as opting in so fresh installs remain usable meanwhile.
+        if (ssid.isNotBlank()) container.settingsRepository.updateWifiPresenceEnabled(true)
         container.presenceService.refresh()
     }
 

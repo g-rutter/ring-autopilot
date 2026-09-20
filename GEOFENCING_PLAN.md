@@ -4,6 +4,18 @@
 
 Approved for implementation. All material product and platform decisions below are resolved.
 
+Implementation started 2026-09-20.
+
+- [x] Model and pure aggregation: detector settings, validated geofence definition,
+  legacy Wi-Fi migration, conservative presence aggregation, and unit tests.
+- [ ] Geofence infrastructure.
+- [ ] Presence integration.
+- [ ] Configuration and permission UX.
+- [ ] Dashboard, widget-facing summaries, and documentation.
+- [ ] Device acceptance verification.
+
+The Android unit-test suite passes with 24 tests after the first milestone.
+
 ## Objective
 
 Add geofencing as a second, independently configurable home-presence signal alongside Wi-Fi. When both signals are enabled, Ring may be switched to **Away** only when both signals explicitly say the phone is away from home. A positive Home signal from either feature keeps or switches Ring to **Disarmed**.

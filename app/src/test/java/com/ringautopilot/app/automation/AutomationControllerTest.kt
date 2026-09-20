@@ -22,6 +22,9 @@ class AutomationControllerTest {
             override val settings = MutableStateFlow(AutomationSettings(
                 controlMode = ControlMode.AUTO, departureDelaySeconds = 30))
             override fun updateHomeWifiSsid(ssid: String) = Unit
+            override fun updateWifiPresenceEnabled(enabled: Boolean) = Unit
+            override fun updateGeofencePresenceEnabled(enabled: Boolean) = Unit
+            override fun updateHomeGeofence(latitude: Double, longitude: Double, radiusMeters: Float) = Unit
             override fun updateRingLocationId(locationId: String) = Unit
             override fun updateControlMode(mode: ControlMode) = Unit
         }
