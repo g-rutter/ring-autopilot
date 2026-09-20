@@ -14,11 +14,24 @@ Implementation started 2026-09-20.
 - [x] Presence integration.
 - [x] Configuration and permission UX.
 - [x] Dashboard, widget-facing summaries, and documentation.
-- [ ] Device acceptance verification (automated verification complete; physical-device matrix pending).
+- [ ] Device acceptance verification (automated verification complete; physical-device matrix in progress).
 
 The Android unit-test suite passes with 34 tests after milestones 3–5. Debug
-compilation includes the Maps Compose picker. The physical-device acceptance
-matrix remains required before milestone 6 can be closed.
+compilation includes the Maps Compose picker.
+
+Physical-device verification on 2026-09-20 used a Samsung SM-S931B running
+Android 16 (API 36) with current Google Play services. It covered debug install
+and package replacement, map rendering and current-location selection,
+dual-detector registration, Wi-Fi Home plus geofence Away aggregation,
+background and precise-location revocation/restoration, disabled Location
+services, process death, reboot restoration, and redacted `RingAutopilot`
+diagnostics. All of those cases passed. The exercise also found and fixed the
+debug build reading `MAPS_API_KEY` from the wrong property source; the packaged
+manifest now receives the value from `local.properties` as documented.
+
+Milestone 6 remains open for actual foreground/background boundary crossings,
+offline transition delivery, rapid crossing/duplicate delivery, fresh-install
+detector permutations, and missing/outdated Play services.
 
 ## Objective
 

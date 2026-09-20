@@ -1,7 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.isFile) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+val mapsApiKey = providers.gradleProperty("MAPS_API_KEY")
+    .orElse(providers.provider { localProperties.getProperty("MAPS_API_KEY", "") })
 
 android {
     namespace = "com.ringautopilot.app"
@@ -15,9 +27,7 @@ android {
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        manifestPlaceholders["MAPS_API_KEY"] = providers.gradleProperty("MAPS_API_KEY")
-            .orElse("")
-            .get()
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey.get()
     }
 
     buildTypes {

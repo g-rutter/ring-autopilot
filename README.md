@@ -97,10 +97,12 @@ and is not itself retried by the controller.
 
 ## Known gaps
 
-- Permission denial/revocation, foreground/background/process-killed geofence
-  delivery, reboot restoration, rapid boundary crossing, and missing/outdated
-  Play services still need the physical-device acceptance matrix in
-  `GEOFENCING_PLAN.md`.
+- Device testing has covered permission revocation, disabled Location services,
+  package replacement, process death, reboot restoration, map selection, and a
+  conflicting Wi-Fi/geofence result. Actual foreground/background boundary
+  crossings, offline delivery, rapid crossing, fresh-install detector
+  permutations, and missing/outdated Play services remain in the physical-device
+  acceptance matrix in `GEOFENCING_PLAN.md`.
 - The app silently chooses the first account location when no ID is entered;
   it does not offer a location picker.
 - Automatic changes can overwrite a deliberate mode change made in the Ring
@@ -147,8 +149,9 @@ dashboard actions.
 sensitive fields and unsafe values; exception messages, HTTP bodies, Ring
 tokens, exact SSIDs, location IDs, camera names, and hardware IDs are never
 included. The dashboard's latest-check summaries are separate from these
-diagnostics. Background and permission flows still need device logcat
-verification with a connected phone.
+diagnostics. Permission, process-death, and reboot flows were verified with
+redacted app logcat output on a Samsung Android 16 device on 2026-09-20; the
+remaining physical transition cases are listed in `GEOFENCING_PLAN.md`.
 
 For new code, log one start and one outcome per operation, use stable reason
 codes and safe typed fields, and rethrow coroutine cancellation. Keep secrets,
