@@ -16,6 +16,7 @@ import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.tasks.Task
 import com.ringautopilot.app.logging.Diagnostics
+import com.ringautopilot.app.logging.operationId
 import com.ringautopilot.app.storage.SettingsRepository
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -40,7 +41,7 @@ data class GeofenceRegistrationResult(
 interface GeofenceManager {
     val registrationHealth: StateFlow<GeofenceRegistrationHealth>
 
-    suspend fun reconcile(): GeofenceRegistrationResult
+    suspend fun reconcile(trigger: String = "unspecified"): GeofenceRegistrationResult
 }
 
 class AndroidGeofenceManager(
@@ -55,8 +56,29 @@ class AndroidGeofenceManager(
     override val registrationHealth: StateFlow<GeofenceRegistrationHealth> =
         mutableRegistrationHealth.asStateFlow()
 
-    override suspend fun reconcile(): GeofenceRegistrationResult {
+    override suspend fun reconcile(trigger: String): GeofenceRegistrationResult {
         val settings = settingsRepository.settings.value
+        val previousPresence = presenceStore.presence.value
+        val attemptId = operationId()
+        val finePermissionGranted = hasFineLocationPermission()
+        val backgroundPermissionGranted = hasBackgroundLocationPermission()
+        val locationEnabled = isLocationEnabled()
+        val playServicesAvailable = isPlayServicesAvailable()
+        Diagnostics.info(
+            "geofence_reconcile_start",
+            mapOf(
+                "attemptId" to attemptId,
+                "trigger" to trigger,
+                "enabled" to settings.geofencePresenceEnabled,
+                "configured" to settings.hasValidGeofence,
+                "finePermission" to finePermissionGranted,
+                "backgroundPermission" to backgroundPermissionGranted,
+                "locationEnabled" to locationEnabled,
+                "playServicesAvailable" to playServicesAvailable,
+                "previousPresence" to previousPresence.state,
+                "stateAge" to geofenceStateAgeBucket(previousPresence),
+            ),
+        )
         val result = when {
             !settings.geofencePresenceEnabled -> {
                 removeGeofenceSafely()
@@ -65,15 +87,23 @@ class AndroidGeofenceManager(
                 GeofenceRegistrationResult("removed", "removed")
             }
             !settings.hasValidGeofence -> unavailable("not_configured")
-            !hasRequiredLocationPermission() -> unavailable("permission_denied")
-            !isLocationEnabled() -> unavailable("location_disabled")
-            !isPlayServicesAvailable() -> unavailable("play_services_unavailable", retryable = true)
+            !finePermissionGranted || !backgroundPermissionGranted -> unavailable("permission_denied")
+            !locationEnabled -> unavailable("location_disabled")
+            !playServicesAvailable -> unavailable("play_services_unavailable", retryable = true)
             else -> register(settings.homeLatitude!!, settings.homeLongitude!!,
                 settings.homeGeofenceRadiusMeters)
         }
         Diagnostics.info(
             "geofence_registration",
-            mapOf("outcome" to result.outcome, "reason" to result.reason),
+            mapOf(
+                "attemptId" to attemptId,
+                "trigger" to trigger,
+                "outcome" to result.outcome,
+                "reason" to result.reason,
+                "previousPresence" to previousPresence.state,
+                "stateAge" to geofenceStateAgeBucket(previousPresence),
+                "initialTrigger" to if (result.outcome == "registered") "enter_exit" else null,
+            ),
         )
         return result
     }
@@ -128,18 +158,18 @@ class AndroidGeofenceManager(
         }
     }
 
-    private fun hasRequiredLocationPermission(): Boolean {
-        val fineGranted = ContextCompat.checkSelfPermission(
+    private fun hasFineLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(
             appContext,
             Manifest.permission.ACCESS_FINE_LOCATION,
         ) == PackageManager.PERMISSION_GRANTED
-        val backgroundGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+
+    private fun hasBackgroundLocationPermission(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
             ContextCompat.checkSelfPermission(
                 appContext,
                 Manifest.permission.ACCESS_BACKGROUND_LOCATION,
             ) == PackageManager.PERMISSION_GRANTED
-        return fineGranted && backgroundGranted
-    }
 
     private fun isLocationEnabled(): Boolean =
         appContext.getSystemService(LocationManager::class.java)?.isLocationEnabled == true
@@ -174,3 +204,17 @@ private suspend fun Task<*>.awaitCompletion() = suspendCancellableCoroutine { co
 }
 
 const val ACTION_GEOFENCE_TRANSITION = "com.ringautopilot.app.action.GEOFENCE_TRANSITION"
+
+internal fun geofenceStateAgeBucket(
+    presence: GeofencePresence,
+    nowEpochMillis: Long = System.currentTimeMillis(),
+): String {
+    if (presence.updatedAtEpochMillis == null) return "never"
+    val ageMillis = (nowEpochMillis - presence.updatedAtEpochMillis).coerceAtLeast(0L)
+    return when {
+        ageMillis < 60_000L -> "under_1m"
+        ageMillis < 15 * 60_000L -> "1m_15m"
+        ageMillis < 60 * 60_000L -> "15m_1h"
+        else -> "over_1h"
+    }
+}

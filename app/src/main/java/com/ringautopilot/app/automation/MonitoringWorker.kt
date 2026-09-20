@@ -54,7 +54,7 @@ class MonitoringWorker(
             },
         )
             controller = activeController
-            activeContainer.geofenceManager.reconcile()
+            activeContainer.geofenceManager.reconcile("monitoring_worker")
             activeController.runOnce()
             activeContainer.statusStore.saveControlMode(activeContainer.settingsRepository.settings.value.controlMode)
             activeContainer.statusStore.saveCameraMode(activeContainer.ringService.mode.value)

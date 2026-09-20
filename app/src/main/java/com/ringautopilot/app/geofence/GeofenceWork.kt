@@ -9,6 +9,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.ringautopilot.app.logging.Diagnostics
 import com.ringautopilot.app.storage.PreferencesSettingsRepository
 
 class GeofenceRegistrationWorker(
@@ -22,7 +23,12 @@ class GeofenceRegistrationWorker(
             PreferencesSettingsRepository(applicationContext),
             store,
         )
-        val result = manager.reconcile()
+        val trigger = inputData.getString("trigger") ?: "worker_unspecified"
+        Diagnostics.info(
+            "geofence_registration_work_start",
+            mapOf("trigger" to trigger, "attempt" to runAttemptCount, "workId" to id),
+        )
+        val result = manager.reconcile(trigger)
         return if (result.retryable) Result.retry() else Result.success()
     }
 }
@@ -32,8 +38,16 @@ object GeofenceWorkScheduler {
 
     fun scheduleRegistration(context: Context, reason: String) {
         val request = OneTimeWorkRequestBuilder<GeofenceRegistrationWorker>()
-            .setInputData(Data.Builder().putString("reason", reason).build())
+            .setInputData(Data.Builder().putString("trigger", reason).build())
             .build()
+        Diagnostics.info(
+            "geofence_registration_enqueue",
+            mapOf(
+                "trigger" to reason,
+                "policy" to "replace",
+                "workId" to request.id,
+            ),
+        )
         WorkManager.getInstance(context).enqueueUniqueWork(
             REGISTRATION_WORK_NAME,
             ExistingWorkPolicy.REPLACE,

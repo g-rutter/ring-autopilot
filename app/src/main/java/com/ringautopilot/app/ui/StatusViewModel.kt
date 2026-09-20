@@ -173,7 +173,7 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         container.presenceService.refresh()
         com.ringautopilot.app.geofence.GeofenceWorkScheduler.scheduleRegistration(
             container.appContext, "configuration_saved")
-        reconcileGeofence()
+        reconcileGeofence("configuration_saved")
     }
 
     fun saveRingLocationId(locationId: String) {
@@ -265,9 +265,9 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
 
     fun refreshPresence() = container.presenceService.refresh()
 
-    fun reconcileGeofence() {
+    fun reconcileGeofence(trigger: String = "app_resume") {
         viewModelScope.launch {
-            container.geofenceManager.reconcile()
+            container.geofenceManager.reconcile(trigger)
             container.presenceService.refresh()
         }
     }
