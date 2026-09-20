@@ -3,8 +3,8 @@ package com.ringautopilot.app
 import android.content.Context
 import com.ringautopilot.app.notifications.AndroidNotificationService
 import com.ringautopilot.app.notifications.NotificationService
-import com.ringautopilot.app.presence.AndroidWifiPresenceService
-import com.ringautopilot.app.presence.PresenceService
+import com.ringautopilot.app.presence.CombinedPresenceService
+import com.ringautopilot.app.presence.WifiPresenceService
 import com.ringautopilot.app.ring.RingService
 import com.ringautopilot.app.ring.HttpRingService
 import com.ringautopilot.app.storage.PreferencesSettingsRepository
@@ -33,7 +33,12 @@ class AppContainer(context: Context) {
         geofencePresenceStore,
     )
     val tokenStore: TokenStore = EncryptedTokenStore(context)
-    val presenceService: PresenceService = AndroidWifiPresenceService(context, settingsRepository)
+    private val wifiPresenceService = WifiPresenceService(context, settingsRepository)
+    val presenceService = CombinedPresenceService(
+        settingsRepository,
+        wifiPresenceService,
+        geofencePresenceStore,
+    )
     val ringService: RingService = HttpRingService(context, settingsRepository, tokenStore)
     val notificationService: NotificationService = AndroidNotificationService(context)
 }

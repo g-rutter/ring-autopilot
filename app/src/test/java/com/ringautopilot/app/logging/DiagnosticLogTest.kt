@@ -12,4 +12,18 @@ class DiagnosticLogTest {
         assertEquals("event=work_end task=ring_monitor attempt=2 endpoint=redacted token=redacted outcome=retry errorType=IllegalStateException", output)
         assertFalse(output.contains("secret"))
     }
+
+    @Test fun `redacts exact geofence coordinates`() {
+        val output = formatEvent("geofence_registration", mapOf(
+            "latitude" to 51.501,
+            "longitude" to -0.142,
+            "outcome" to "registered",
+        ))
+        assertEquals(
+            "event=geofence_registration latitude=redacted longitude=redacted outcome=registered",
+            output,
+        )
+        assertFalse(output.contains("51.501"))
+        assertFalse(output.contains("-0.142"))
+    }
 }

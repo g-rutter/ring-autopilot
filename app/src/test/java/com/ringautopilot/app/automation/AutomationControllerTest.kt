@@ -17,6 +17,53 @@ import org.junit.Test
 
 class AutomationControllerTest {
     @Test
+    fun `unknown presence clears and cancels a pending away change`() = runBlocking {
+        val settings = object : SettingsRepository {
+            override val settings = MutableStateFlow(AutomationSettings(controlMode = ControlMode.AUTO))
+            override fun updateHomeWifiSsid(ssid: String) = Unit
+            override fun updateWifiPresenceEnabled(enabled: Boolean) = Unit
+            override fun updateGeofencePresenceEnabled(enabled: Boolean) = Unit
+            override fun updateHomeGeofence(latitude: Double, longitude: Double, radiusMeters: Float) = Unit
+            override fun updateRingLocationId(locationId: String) = Unit
+            override fun updateControlMode(mode: ControlMode) = Unit
+        }
+        val presence = object : PresenceService {
+            override val presence = MutableStateFlow(PresenceState.UNKNOWN)
+            override fun start() = Unit
+            override fun stop() = Unit
+            override fun refresh() = Unit
+            override fun currentWifiSsid(): String? = null
+        }
+        val ring = object : RingService {
+            override val mode = MutableStateFlow(RingMode.DISARMED)
+            override suspend fun refreshMode() = Result.success(mode.value)
+            override suspend fun setMode(mode: RingMode) = Result.success(Unit)
+        }
+        val pendingStore = object : PendingChangeStore {
+            var saved: PendingChange? = PendingChange(RingMode.AWAY, System.currentTimeMillis() + 30_000)
+            override fun pendingChange() = saved
+            override fun savePendingChange(change: PendingChange) { saved = change }
+            override fun clearPendingChange() { saved = null }
+        }
+        var cancelled = false
+        val controller = AutomationController(
+            this, presence, ring, settings,
+            object : NotificationService {
+                override fun notifyModeChanged(mode: RingMode) = Unit
+                override fun notifyEventSummary(summary: EventSummary) = Unit
+            },
+            pendingStore,
+            schedulePendingWork = { _, _ -> },
+            cancelPendingWork = { cancelled = true },
+        )
+
+        controller.runOnce()
+
+        assertNull(pendingStore.saved)
+        assertEquals(true, cancelled)
+    }
+
+    @Test
     fun `background checks retain the original deadline and apply overdue change`() = runBlocking {
         val settings = object : SettingsRepository {
             override val settings = MutableStateFlow(AutomationSettings(

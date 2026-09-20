@@ -14,7 +14,7 @@ enum class RingMode {
     DISARMED,
 }
 
-/** Whether Wi-Fi automation is enabled; Ring's current mode is tracked separately. */
+/** Whether presence automation is enabled; Ring's current mode is tracked separately. */
 enum class ControlMode {
     AUTO,
     MANUAL,

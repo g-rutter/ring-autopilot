@@ -44,6 +44,7 @@ class AutomationController(
     private val notificationService: NotificationService,
     private val pendingChangeStore: PendingChangeStore,
     private val schedulePendingWork: (Long, Boolean) -> Unit,
+    private val cancelPendingWork: () -> Unit = {},
     private val onCheckFinished: (PresenceState, AutomationStatus, CheckOrigin) -> Unit = { _, _, _ -> },
 ) {
     private val mutableStatus = MutableStateFlow<AutomationStatus>(AutomationStatus.Idle)
@@ -61,7 +62,7 @@ class AutomationController(
             combine(settingsRepository.settings, presenceService.presence) { settings, presence ->
                 settings to presence
             }.collectLatest { (settings, presence) ->
-                onStateChanged(settings.controlMode, presence)
+                onStateChanged(settings, presence)
             }
         }
     }
@@ -80,7 +81,8 @@ class AutomationController(
         val presence = presenceService.presence.value
         lastDecision = "unavailable"
         currentOpId = operationId()
-        Diagnostics.info("check_start", mapOf("opId" to currentOpId, "origin" to "automatic", "presence" to presence, "auto" to (settingsRepository.settings.value.controlMode == ControlMode.AUTO)))
+        Diagnostics.info("check_start", checkFields("automatic", presence) +
+            mapOf("auto" to (settingsRepository.settings.value.controlMode == ControlMode.AUTO)))
         runAutomation(settingsRepository.settings.value, presence, waitForDeadline = false)
         if (settingsRepository.settings.value.controlMode == ControlMode.AUTO) {
             onCheckFinished(presence, mutableStatus.value, CheckOrigin.AUTOMATIC)
@@ -89,7 +91,7 @@ class AutomationController(
     }
 
     /**
-     * Immediately applies the mode implied by the current Wi-Fi presence.
+     * Immediately applies the mode implied by the current combined presence.
      *
      * Unlike scheduled automation, this is an explicit user request and is
      * therefore allowed while Auto is off.
@@ -100,9 +102,9 @@ class AutomationController(
         transitionJob?.cancel()
         transitionJob = scope.launch {
             presenceService.refresh()
-            Diagnostics.info("check_start", mapOf("opId" to currentOpId, "origin" to "manual_apply", "presence" to presenceService.presence.value))
             lastDecision = "unavailable"
             currentOpId = operationId()
+            Diagnostics.info("check_start", checkFields("manual_apply", presenceService.presence.value))
             val desiredMode = desiredModeFor(presenceService.presence.value) ?: run {
                 mutableStatus.value = AutomationStatus.Idle
                 onCheckFinished(presenceService.presence.value, mutableStatus.value, CheckOrigin.MANUAL_APPLY)
@@ -115,14 +117,32 @@ class AutomationController(
         }
     }
 
-    private fun onStateChanged(controlMode: ControlMode, presence: PresenceState) {
+    private var lastPresenceConfiguration: List<Any?>? = null
+
+    private fun onStateChanged(
+        settings: com.ringautopilot.app.model.AutomationSettings,
+        presence: PresenceState,
+    ) {
         transitionJob?.cancel()
         transitionJob = null
+
+        val configuration = listOf(
+            settings.wifiPresenceEnabled,
+            settings.homeWifiSsid,
+            settings.geofencePresenceEnabled,
+            settings.homeLatitude,
+            settings.homeLongitude,
+            settings.homeGeofenceRadiusMeters,
+        )
+        if (lastPresenceConfiguration != null && lastPresenceConfiguration != configuration) {
+            clearPendingChange()
+        }
+        lastPresenceConfiguration = configuration
 
         transitionJob = scope.launch {
             lastDecision = "unavailable"
             currentOpId = operationId()
-            Diagnostics.info("check_start", mapOf("opId" to currentOpId, "origin" to "automatic", "presence" to presence))
+            Diagnostics.info("check_start", checkFields("automatic", presence))
             runAutomation(settingsRepository.settings.value, presence, waitForDeadline = true)
             if (settingsRepository.settings.value.controlMode == ControlMode.AUTO) {
                 onCheckFinished(presence, mutableStatus.value, CheckOrigin.AUTOMATIC)
@@ -133,9 +153,20 @@ class AutomationController(
 
     private fun logDecision(origin: String, presence: PresenceState) {
         val reason = lastDecision
-        Diagnostics.info("check_end", mapOf("opId" to currentOpId, "origin" to origin, "presence" to presence, "currentMode" to ringService.mode.value,
+        Diagnostics.info("check_end", checkFields(origin, presence) + mapOf("currentMode" to ringService.mode.value,
             "desiredMode" to desiredModeFor(presence), "auto" to (settingsRepository.settings.value.controlMode == ControlMode.AUTO),
             "pendingDeadline" to pendingChangeStore.pendingChange()?.dueAtMillis, "outcome" to reason))
+    }
+
+    private fun checkFields(origin: String, presence: PresenceState): Map<String, Any?> {
+        val settings = settingsRepository.settings.value
+        return mapOf(
+            "opId" to currentOpId,
+            "origin" to origin,
+            "presence" to presence,
+            "wifiEnabled" to settings.wifiPresenceEnabled,
+            "geofenceEnabled" to settings.geofencePresenceEnabled,
+        )
     }
 
     private suspend fun runAutomation(
@@ -144,13 +175,14 @@ class AutomationController(
         waitForDeadline: Boolean,
     ) {
         if (settings.controlMode != ControlMode.AUTO) {
-            pendingChangeStore.clearPendingChange()
+            clearPendingChange()
             lastDecision = "auto_off"
             mutableStatus.value = AutomationStatus.ManualOverride
             return
         }
 
         val desiredMode = desiredModeFor(presence) ?: run {
+            clearPendingChange()
             lastDecision = "unavailable"
             mutableStatus.value = AutomationStatus.Idle
             return
@@ -171,7 +203,7 @@ class AutomationController(
             return
         }
         if (currentMode == desiredMode) {
-            pendingChangeStore.clearPendingChange()
+            clearPendingChange()
             lastDecision = "already_correct"
             mutableStatus.value = AutomationStatus.Idle
             return
@@ -203,13 +235,18 @@ class AutomationController(
             latestSettings.controlMode != ControlMode.AUTO ||
             desiredModeFor(presenceService.presence.value) != desiredMode
         ) {
-            pendingChangeStore.clearPendingChange()
+            clearPendingChange()
             lastDecision = "state_changed"
             mutableStatus.value = AutomationStatus.Idle
             return
         }
         switchIfNeeded(desiredMode)
-        if (mutableStatus.value !is AutomationStatus.Failed) pendingChangeStore.clearPendingChange()
+        if (mutableStatus.value !is AutomationStatus.Failed) clearPendingChange()
+    }
+
+    private fun clearPendingChange() {
+        pendingChangeStore.clearPendingChange()
+        cancelPendingWork()
     }
 
     /** Publishes each remaining second so the UI can show a genuine live countdown. */

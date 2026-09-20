@@ -14,6 +14,7 @@ import com.ringautopilot.app.automation.checkResult
 import com.ringautopilot.app.model.ControlMode
 import com.ringautopilot.app.model.PresenceState
 import com.ringautopilot.app.model.RingMode
+import com.ringautopilot.app.geofence.GeofenceRegistrationHealth
 import com.ringautopilot.app.storage.LastCheck
 import com.ringautopilot.app.widget.RingWidgetProvider
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,9 +28,16 @@ data class StatusUiState(
     val homeWifiSsid: String = "",
     val wifiPresenceEnabled: Boolean = false,
     val geofencePresenceEnabled: Boolean = false,
+    val homeLatitude: Double? = null,
+    val homeLongitude: Double? = null,
+    val homeGeofenceRadiusMeters: Float = 100f,
     val isSetupComplete: Boolean = false,
     val ringLocationId: String = "",
     val presence: PresenceState = PresenceState.UNKNOWN,
+    val wifiPresence: PresenceState = PresenceState.NOT_CONFIGURED,
+    val geofencePresence: PresenceState = PresenceState.NOT_CONFIGURED,
+    val geofenceRegistrationHealth: GeofenceRegistrationHealth =
+        GeofenceRegistrationHealth.NOT_CONFIGURED,
     val ringMode: RingMode = RingMode.UNKNOWN,
     val controlMode: ControlMode = ControlMode.AUTO,
     val automationStatus: AutomationStatus = AutomationStatus.Idle,
@@ -52,6 +60,10 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
             com.ringautopilot.app.automation.MonitoringWorkScheduler.schedulePending(
                 container.appContext, delayMillis, replace)
         },
+        cancelPendingWork = {
+            com.ringautopilot.app.automation.MonitoringWorkScheduler.cancelPending(
+                container.appContext)
+        },
         onCheckFinished = { presence, status, origin ->
             val result = checkResult(presence, status)
             container.statusStore.saveCheck(result.summary, result.problem,
@@ -72,20 +84,42 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    private data class DetectorState(
+        val combined: PresenceState,
+        val wifi: PresenceState,
+        val geofence: PresenceState,
+        val health: GeofenceRegistrationHealth,
+    )
+
+    private val detectorState = combine(
+        container.presenceService.presence,
+        container.presenceService.wifiPresence,
+        container.presenceService.geofencePresence,
+        container.geofenceManager.registrationHealth,
+    ) { combined, wifi, geofence, health ->
+        DetectorState(combined, wifi, geofence.state, health)
+    }
+
     private val baseState = combine(
         container.settingsRepository.settings,
-        container.presenceService.presence,
+        detectorState,
         container.ringService.mode,
         automationController.status,
         mutableRingValidation,
-    ) { settings, presence, ringMode, automationStatus, validation ->
+    ) { settings, detectors, ringMode, automationStatus, validation ->
         StatusUiState(
             homeWifiSsid = settings.homeWifiSsid,
             wifiPresenceEnabled = settings.wifiPresenceEnabled,
             geofencePresenceEnabled = settings.geofencePresenceEnabled,
+            homeLatitude = settings.homeLatitude,
+            homeLongitude = settings.homeLongitude,
+            homeGeofenceRadiusMeters = settings.homeGeofenceRadiusMeters,
             isSetupComplete = settings.hasConfiguredPresence,
             ringLocationId = settings.ringLocationId,
-            presence = presence,
+            presence = detectors.combined,
+            wifiPresence = detectors.wifi,
+            geofencePresence = detectors.geofence,
+            geofenceRegistrationHealth = detectors.health,
             ringMode = ringMode,
             controlMode = settings.controlMode,
             automationStatus = automationStatus,
@@ -113,24 +147,40 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         initialValue = StatusUiState(ringMode = container.statusStore.cameraMode()),
     )
 
-    fun saveHomeWifiSsid(ssid: String) {
+    fun savePresenceConfiguration(
+        wifiEnabled: Boolean,
+        ssid: String,
+        geofenceEnabled: Boolean,
+        latitude: Double?,
+        longitude: Double?,
+        radiusMeters: Float,
+    ) {
+        val old = container.settingsRepository.settings.value
         container.settingsRepository.updateHomeWifiSsid(ssid)
-        // The current UI is Wi-Fi-only until the feature-card configuration work lands.
-        // Treat saving its SSID as opting in so fresh installs remain usable meanwhile.
-        if (ssid.isNotBlank()) container.settingsRepository.updateWifiPresenceEnabled(true)
+        container.settingsRepository.updateWifiPresenceEnabled(wifiEnabled)
+        if (latitude != null && longitude != null) {
+            container.settingsRepository.updateHomeGeofence(latitude, longitude, radiusMeters)
+        }
+        container.settingsRepository.updateGeofencePresenceEnabled(geofenceEnabled)
+        if (old.wifiPresenceEnabled != wifiEnabled) {
+            Diagnostics.info("user_action_end", mapOf(
+                "action" to "wifi_toggle", "outcome" to "changed", "enabled" to wifiEnabled))
+        }
+        if (old.geofencePresenceEnabled != geofenceEnabled) {
+            Diagnostics.info("user_action_end", mapOf(
+                "action" to "geofence_toggle", "outcome" to "changed", "enabled" to geofenceEnabled))
+        }
         container.presenceService.refresh()
+        com.ringautopilot.app.geofence.GeofenceWorkScheduler.scheduleRegistration(
+            container.appContext, "configuration_saved")
+        reconcileGeofence()
     }
 
     fun saveRingLocationId(locationId: String) {
         container.settingsRepository.updateRingLocationId(locationId)
     }
 
-    fun useCurrentWifi(): String {
-        val ssid = container.presenceService.currentWifiSsid()
-            ?: return "Could not read the connected Wi-Fi. Allow Precise location and ensure Location services are turned on."
-        saveHomeWifiSsid(ssid)
-        return "Home Wi-Fi saved: $ssid"
-    }
+    fun currentWifiSsid(): String? = container.presenceService.currentWifiSsid()
 
     fun saveRingCredentials(refreshToken: String, locationId: String) {
         container.settingsRepository.updateRingLocationId(locationId)
@@ -172,6 +222,11 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         if (container.settingsRepository.settings.value.controlMode == mode) return
         Diagnostics.info("user_action_end", mapOf("action" to "auto_toggle", "outcome" to "changed", "enabled" to enabled))
         container.settingsRepository.updateControlMode(mode)
+        if (!enabled) {
+            container.statusStore.clearPendingChange()
+            com.ringautopilot.app.automation.MonitoringWorkScheduler.cancelPending(
+                container.appContext)
+        }
         container.statusStore.saveControlMode(mode)
         RingWidgetProvider.updateAll(container.appContext)
         mutableRingValidation.value = RingValidationState(
@@ -209,6 +264,13 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun refreshPresence() = container.presenceService.refresh()
+
+    fun reconcileGeofence() {
+        viewModelScope.launch {
+            container.geofenceManager.reconcile()
+            container.presenceService.refresh()
+        }
+    }
 
     fun refreshLastCheck() {
         container.statusStore.saveControlMode(container.settingsRepository.settings.value.controlMode)

@@ -11,12 +11,14 @@ Implementation started 2026-09-20.
 - [x] Geofence infrastructure: Play services registration, persisted transition
   state, safe event parsing, transition/restore receivers, recovery work, and
   manifest wiring.
-- [ ] Presence integration.
-- [ ] Configuration and permission UX.
-- [ ] Dashboard, widget-facing summaries, and documentation.
-- [ ] Device acceptance verification.
+- [x] Presence integration.
+- [x] Configuration and permission UX.
+- [x] Dashboard, widget-facing summaries, and documentation.
+- [ ] Device acceptance verification (automated verification complete; physical-device matrix pending).
 
-The Android unit-test suite passes with 30 tests after the second milestone.
+The Android unit-test suite passes with 34 tests after milestones 3–5. Debug
+compilation includes the Maps Compose picker. The physical-device acceptance
+matrix remains required before milestone 6 can be closed.
 
 ## Objective
 

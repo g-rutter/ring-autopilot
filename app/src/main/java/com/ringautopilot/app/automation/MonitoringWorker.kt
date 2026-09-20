@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 
-/** Periodically checks Wi-Fi presence and applies the configured Ring automation. */
+/** Checks combined presence and applies the configured Ring automation. */
 class MonitoringWorker(
     appContext: Context,
     params: WorkerParameters,
@@ -54,6 +54,7 @@ class MonitoringWorker(
             },
         )
             controller = activeController
+            activeContainer.geofenceManager.reconcile()
             activeController.runOnce()
             activeContainer.statusStore.saveControlMode(activeContainer.settingsRepository.settings.value.controlMode)
             activeContainer.statusStore.saveCameraMode(activeContainer.ringService.mode.value)
@@ -70,7 +71,7 @@ class MonitoringWorker(
                 reason = when (activeController.status.value) {
                     is AutomationStatus.Waiting -> "waiting"
                     AutomationStatus.ManualOverride -> "auto_off"
-                    else -> if (outcome == "skipped") "no_wifi" else "completed"
+                    else -> if (outcome == "skipped") "presence_unavailable" else "completed"
                 }
                 Result.success()
             }
@@ -81,7 +82,7 @@ class MonitoringWorker(
         } catch (error: Exception) {
             reason = errorReason(error)
             Diagnostics.error("work_exception", mapOf("task" to task, "workId" to id, "reason" to reason), error)
-            container?.statusStore?.saveCheck("Wi-Fi automation failed", true,
+            container?.statusStore?.saveCheck("Presence automation failed", true,
                 automated = true)
             RingWidgetProvider.updateAll(applicationContext)
             Result.retry()
@@ -126,6 +127,10 @@ object MonitoringWorkScheduler {
             PENDING_WORK_NAME, if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request,
         )
         Diagnostics.info("work_enqueue", mapOf("task" to "pending", "workName" to PENDING_WORK_NAME, "policy" to if (replace) "replace" else "keep", "delayMs" to delayMillis, "constraints" to "connected", "workId" to request.id))
+    }
+
+    fun cancelPending(context: Context) {
+        WorkManager.getInstance(context).cancelUniqueWork(PENDING_WORK_NAME)
     }
 
     fun scheduleGeofenceTransition(context: Context) {

@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class AndroidWifiPresenceService(
+class WifiPresenceService(
     context: Context,
     private val settingsRepository: SettingsRepository,
 ) : PresenceService {
@@ -35,6 +35,10 @@ class AndroidWifiPresenceService(
 
     override fun start() {
         if (started) return
+        if (!isConfigured()) {
+            publish(PresenceState.NOT_CONFIGURED, "not_configured")
+            return
+        }
         started = true
         try {
             connectivityManager.registerDefaultNetworkCallback(networkCallback)
@@ -62,7 +66,7 @@ class AndroidWifiPresenceService(
         val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
             ?.takeIf { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
             ?: return null
-        ssidFrom(capabilities.transportInfo as? WifiInfo)
+        ssidFrom(wifiInfoFrom(capabilities))
             // Some Android 12+ devices return a redacted WifiInfo through
             // ConnectivityManager even when precise location is allowed. Validate the
             // SSID before falling back instead of only falling back when WifiInfo is null.
@@ -76,8 +80,10 @@ class AndroidWifiPresenceService(
     @SuppressLint("MissingPermission")
     @Suppress("DEPRECATION")
     private fun evaluate() {
-        val homeSsid = settingsRepository.settings.value.homeWifiSsid
-        if (homeSsid.isBlank()) {
+        val settings = settingsRepository.settings.value
+        val homeSsid = settings.homeWifiSsid
+        if (!settings.wifiPresenceEnabled || homeSsid.isBlank()) {
+            stop()
             publish(PresenceState.NOT_CONFIGURED, "not_configured")
             return
         }
@@ -90,7 +96,7 @@ class AndroidWifiPresenceService(
                 return
             }
 
-            val connectedSsid = ssidFrom(capabilities.transportInfo as? WifiInfo)
+            val connectedSsid = ssidFrom(wifiInfoFrom(capabilities))
                 ?: ssidFrom(wifiManager.connectionInfo)
                 ?: callbackWifiSsid
 
@@ -103,6 +109,10 @@ class AndroidWifiPresenceService(
             Diagnostics.warn("presence_read_failed", mapOf("reason" to "permission_denied"), error)
             publish(PresenceState.UNKNOWN, "permission_denied")
         }
+    }
+
+    private fun isConfigured(): Boolean = settingsRepository.settings.value.let {
+        it.wifiPresenceEnabled && it.homeWifiSsid.isNotBlank()
     }
 
     private fun publish(state: PresenceState, reason: String) {
@@ -156,7 +166,7 @@ class AndroidWifiPresenceService(
         callbackWifiSsid = if (
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
         ) {
-            ssidFrom(capabilities.transportInfo as? WifiInfo)
+            ssidFrom(wifiInfoFrom(capabilities))
         } else {
             null
         }
@@ -168,7 +178,13 @@ class AndroidWifiPresenceService(
         ?.trim()
         ?.takeUnless {
             it.isBlank() ||
-                it == WifiManager.UNKNOWN_SSID ||
                 it.equals("<unknown ssid>", ignoreCase = true)
+        }
+
+    private fun wifiInfoFrom(capabilities: NetworkCapabilities): WifiInfo? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            capabilities.transportInfo as? WifiInfo
+        } else {
+            null
         }
 }

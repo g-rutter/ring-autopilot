@@ -42,7 +42,7 @@ class HttpStatusException(val status: Int) : IOException("HTTP status $status")
 
 private val safeToken = Regex("[a-zA-Z0-9_.-]{1,80}")
 private val safeKey = Regex("[a-zA-Z][a-zA-Z0-9]{0,40}")
-private val sensitiveKey = Regex("(?i).*(token|secret|key|ssid|bridge|camera|hardware|header|body|url|address|coordinates|locationId|ipAddress).*")
+private val sensitiveKey = Regex("(?i).*(token|secret|key|ssid|bridge|camera|hardware|header|body|url|address|coordinates|latitude|longitude|locationId|ipAddress).*")
 
 fun formatEvent(event: String, fields: Map<String, Any?> = emptyMap(), error: Throwable? = null): String {
     require(safeToken.matches(event))

@@ -7,6 +7,14 @@ import org.junit.Test
 
 class CheckResultTest {
     @Test
+    fun `unavailable check uses detector neutral copy`() {
+        assertEquals(
+            CheckResult("Presence unavailable", true),
+            checkResult(PresenceState.UNKNOWN, AutomationStatus.Idle),
+        )
+    }
+
+    @Test
     fun `completed check is confirmed`() {
         assertEquals(
             CheckResult("Apply auto · Confirmed", false),
