@@ -17,12 +17,16 @@ import com.ringautopilot.app.geofence.GeofenceManager
 import com.ringautopilot.app.geofence.GeofencePresenceStore
 import com.ringautopilot.app.geofence.PreferencesGeofencePresenceStore
 import com.ringautopilot.app.geofence.GeofenceWorkScheduler
+import com.ringautopilot.app.geofence.GeofenceRegistrationStore
+import com.ringautopilot.app.geofence.PreferencesGeofenceRegistrationStore
 import com.ringautopilot.app.logging.Diagnostics
 
 class AppContainer(context: Context) {
     val appContext: Context = context.applicationContext
     val statusStore = StatusStore(context)
     val geofencePresenceStore: GeofencePresenceStore = PreferencesGeofencePresenceStore(context)
+    val geofenceRegistrationStore: GeofenceRegistrationStore =
+        PreferencesGeofenceRegistrationStore(context)
     val settingsRepository: SettingsRepository = PreferencesSettingsRepository(
         context = context,
         onGeofenceInvalidated = {
@@ -33,7 +37,9 @@ class AppContainer(context: Context) {
                     "previousPresence" to geofencePresenceStore.presence.value.state,
                 ),
             )
-            geofencePresenceStore.clear()
+            val generation = PreferencesSettingsRepository(context).settings.value
+                .geofenceDefinitionGeneration
+            geofencePresenceStore.clearForGeneration(generation)
         },
         onGeofenceReconcileRequested = {
             GeofenceWorkScheduler.scheduleRegistration(context, "settings_changed")
@@ -43,6 +49,7 @@ class AppContainer(context: Context) {
         context,
         settingsRepository,
         geofencePresenceStore,
+        geofenceRegistrationStore,
     )
     val tokenStore: TokenStore = EncryptedTokenStore(context)
     private val wifiPresenceService = WifiPresenceService(context, settingsRepository)

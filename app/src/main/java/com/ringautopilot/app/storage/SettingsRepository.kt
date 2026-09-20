@@ -3,6 +3,7 @@ package com.ringautopilot.app.storage
 import android.content.Context
 import com.ringautopilot.app.model.AutomationSettings
 import com.ringautopilot.app.model.ControlMode
+import com.ringautopilot.app.geofence.geofenceStateLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,6 +15,19 @@ interface SettingsRepository {
     fun updateWifiPresenceEnabled(enabled: Boolean)
     fun updateGeofencePresenceEnabled(enabled: Boolean)
     fun updateHomeGeofence(latitude: Double, longitude: Double, radiusMeters: Float)
+    fun updatePresenceConfiguration(
+        wifiEnabled: Boolean,
+        ssid: String,
+        geofenceEnabled: Boolean,
+        latitude: Double?,
+        longitude: Double?,
+        radiusMeters: Float,
+    ) {
+        updateHomeWifiSsid(ssid)
+        updateWifiPresenceEnabled(wifiEnabled)
+        if (latitude != null && longitude != null) updateHomeGeofence(latitude, longitude, radiusMeters)
+        updateGeofencePresenceEnabled(geofenceEnabled)
+    }
     fun updateRingLocationId(locationId: String)
     fun updateControlMode(mode: ControlMode)
 }
@@ -48,11 +62,11 @@ class PreferencesSettingsRepository(
     }
 
     override fun updateGeofencePresenceEnabled(enabled: Boolean) {
-        if (mutableSettings.value.geofencePresenceEnabled == enabled) return
-        preferences.edit().putBoolean(KEY_GEOFENCE_PRESENCE_ENABLED, enabled).apply()
-        mutableSettings.value = mutableSettings.value.copy(geofencePresenceEnabled = enabled)
-        onGeofenceInvalidated()
-        onGeofenceReconcileRequested()
+        val current = mutableSettings.value
+        updatePresenceConfiguration(
+            current.wifiPresenceEnabled, current.homeWifiSsid, enabled,
+            current.homeLatitude, current.homeLongitude, current.homeGeofenceRadiusMeters,
+        )
     }
 
     override fun updateHomeGeofence(
@@ -65,21 +79,59 @@ class PreferencesSettingsRepository(
         require(AutomationSettings.isValidGeofenceRadius(radiusMeters)) {
             "Geofence radius must be 50–500 m in 50 m increments"
         }
-        val previous = mutableSettings.value
-        if (previous.homeLatitude == latitude && previous.homeLongitude == longitude &&
-            previous.homeGeofenceRadiusMeters == radiusMeters) return
-        preferences.edit()
-            .putLong(KEY_HOME_LATITUDE, latitude.toBits())
-            .putLong(KEY_HOME_LONGITUDE, longitude.toBits())
+        val current = mutableSettings.value
+        updatePresenceConfiguration(
+            current.wifiPresenceEnabled, current.homeWifiSsid,
+            current.geofencePresenceEnabled, latitude, longitude, radiusMeters,
+        )
+    }
+
+    override fun updatePresenceConfiguration(
+        wifiEnabled: Boolean,
+        ssid: String,
+        geofenceEnabled: Boolean,
+        latitude: Double?,
+        longitude: Double?,
+        radiusMeters: Float,
+    ) = synchronized(geofenceStateLock) {
+        val normalizedSsid = ssid.trim().removeSurrounding("\"")
+        if (geofenceEnabled) {
+            require(latitude != null && latitude in -90.0..90.0) { "Latitude is out of range" }
+            require(longitude != null && longitude in -180.0..180.0) { "Longitude is out of range" }
+            require(AutomationSettings.isValidGeofenceRadius(radiusMeters)) {
+                "Geofence radius must be 50–500 m in 50 m increments"
+            }
+        }
+        val old = mutableSettings.value
+        val definitionChanged = old.geofencePresenceEnabled != geofenceEnabled ||
+            old.homeLatitude != latitude || old.homeLongitude != longitude ||
+            old.homeGeofenceRadiusMeters != radiusMeters
+        val generation = if (definitionChanged) old.geofenceDefinitionGeneration + 1L
+            else old.geofenceDefinitionGeneration
+        val editor = preferences.edit()
+            .putString(KEY_HOME_WIFI_SSID, normalizedSsid)
+            .putBoolean(KEY_WIFI_PRESENCE_ENABLED, wifiEnabled)
+            .putBoolean(KEY_GEOFENCE_PRESENCE_ENABLED, geofenceEnabled)
             .putFloat(KEY_HOME_GEOFENCE_RADIUS_METERS, radiusMeters)
-            .apply()
-        mutableSettings.value = mutableSettings.value.copy(
+            .putLong(KEY_GEOFENCE_DEFINITION_GENERATION, generation)
+        if (latitude == null) editor.remove(KEY_HOME_LATITUDE)
+        else editor.putLong(KEY_HOME_LATITUDE, latitude.toBits())
+        if (longitude == null) editor.remove(KEY_HOME_LONGITUDE)
+        else editor.putLong(KEY_HOME_LONGITUDE, longitude.toBits())
+        editor.commit()
+        mutableSettings.value = old.copy(
+            homeWifiSsid = normalizedSsid,
+            wifiPresenceEnabled = wifiEnabled,
+            geofencePresenceEnabled = geofenceEnabled,
             homeLatitude = latitude,
             homeLongitude = longitude,
             homeGeofenceRadiusMeters = radiusMeters,
+            geofenceDefinitionGeneration = generation,
         )
-        onGeofenceInvalidated()
-        onGeofenceReconcileRequested()
+        if (definitionChanged) {
+            onGeofenceInvalidated()
+            onGeofenceReconcileRequested()
+        }
     }
 
     override fun updateRingLocationId(locationId: String) {
@@ -112,6 +164,11 @@ class PreferencesSettingsRepository(
                 AutomationSettings.MIN_GEOFENCE_RADIUS_METERS,
                 AutomationSettings.MAX_GEOFENCE_RADIUS_METERS,
             ),
+            geofenceDefinitionGeneration = preferences.getLong(
+                KEY_GEOFENCE_DEFINITION_GENERATION,
+                if (preferences.contains(KEY_HOME_LATITUDE) &&
+                    preferences.contains(KEY_HOME_LONGITUDE)) 1L else 0L,
+            ),
             ringLocationId = preferences.getString(KEY_RING_LOCATION_ID, "").orEmpty(),
             controlMode = when (preferences.getString(KEY_CONTROL_MODE, null)) {
                 null, ControlMode.AUTO.name -> ControlMode.AUTO
@@ -131,6 +188,7 @@ class PreferencesSettingsRepository(
         const val KEY_HOME_LATITUDE = "home_latitude"
         const val KEY_HOME_LONGITUDE = "home_longitude"
         const val KEY_HOME_GEOFENCE_RADIUS_METERS = "home_geofence_radius_meters"
+        const val KEY_GEOFENCE_DEFINITION_GENERATION = "geofence_definition_generation"
         const val KEY_RING_LOCATION_ID = "ring_location_id"
         const val KEY_CONTROL_MODE = "control_mode"
     }

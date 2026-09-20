@@ -37,7 +37,7 @@ data class StatusUiState(
     val wifiPresence: PresenceState = PresenceState.NOT_CONFIGURED,
     val geofencePresence: PresenceState = PresenceState.NOT_CONFIGURED,
     val geofenceRegistrationHealth: GeofenceRegistrationHealth =
-        GeofenceRegistrationHealth.NOT_CONFIGURED,
+        GeofenceRegistrationHealth.UNREGISTERED,
     val ringMode: RingMode = RingMode.UNKNOWN,
     val controlMode: ControlMode = ControlMode.AUTO,
     val automationStatus: AutomationStatus = AutomationStatus.Idle,
@@ -96,8 +96,8 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         container.presenceService.wifiPresence,
         container.presenceService.geofencePresence,
         container.geofenceManager.registrationHealth,
-    ) { combined, wifi, geofence, health ->
-        DetectorState(combined, wifi, geofence.state, health)
+    ) { combined, wifi, geofence, registration ->
+        DetectorState(combined, wifi, geofence.state, registration.health)
     }
 
     private val baseState = combine(
@@ -156,12 +156,9 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
         radiusMeters: Float,
     ) {
         val old = container.settingsRepository.settings.value
-        container.settingsRepository.updateHomeWifiSsid(ssid)
-        container.settingsRepository.updateWifiPresenceEnabled(wifiEnabled)
-        if (latitude != null && longitude != null) {
-            container.settingsRepository.updateHomeGeofence(latitude, longitude, radiusMeters)
-        }
-        container.settingsRepository.updateGeofencePresenceEnabled(geofenceEnabled)
+        container.settingsRepository.updatePresenceConfiguration(
+            wifiEnabled, ssid, geofenceEnabled, latitude, longitude, radiusMeters,
+        )
         if (old.wifiPresenceEnabled != wifiEnabled) {
             Diagnostics.info("user_action_end", mapOf(
                 "action" to "wifi_toggle", "outcome" to "changed", "enabled" to wifiEnabled))
@@ -171,9 +168,6 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
                 "action" to "geofence_toggle", "outcome" to "changed", "enabled" to geofenceEnabled))
         }
         container.presenceService.refresh()
-        com.ringautopilot.app.geofence.GeofenceWorkScheduler.scheduleRegistration(
-            container.appContext, "configuration_saved")
-        reconcileGeofence("configuration_saved")
     }
 
     fun saveRingLocationId(locationId: String) {
@@ -266,10 +260,15 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
     fun refreshPresence() = container.presenceService.refresh()
 
     fun reconcileGeofence(trigger: String = "app_resume") {
-        viewModelScope.launch {
-            container.geofenceManager.reconcile(trigger)
-            container.presenceService.refresh()
-        }
+        com.ringautopilot.app.geofence.GeofenceWorkScheduler.scheduleRegistration(
+            container.appContext, trigger,
+        )
+    }
+
+    fun retryGeofenceInitialState() {
+        com.ringautopilot.app.geofence.GeofenceWorkScheduler.scheduleRegistration(
+            container.appContext, "user_retry_initial_state",
+        )
     }
 
     fun refreshLastCheck() {

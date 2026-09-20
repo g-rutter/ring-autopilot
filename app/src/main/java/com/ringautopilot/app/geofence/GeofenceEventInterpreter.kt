@@ -8,6 +8,7 @@ sealed interface InterpretedGeofenceEvent {
     data class Transition(
         val state: PresenceState,
         val transitionName: String,
+        val generation: Long,
     ) : InterpretedGeofenceEvent
 
     data class Ignored(
@@ -22,6 +23,7 @@ object GeofenceEventInterpreter {
         errorCode: Int,
         transition: Int,
         requestIds: Collection<String>,
+        currentGeneration: Long,
     ): InterpretedGeofenceEvent {
         if (hasError) {
             val unavailable = errorCode == GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE
@@ -30,21 +32,25 @@ object GeofenceEventInterpreter {
                 registrationUnavailable = unavailable,
             )
         }
-        if (GEOFENCE_REQUEST_ID !in requestIds) {
+        val generations = requestIds.mapNotNull(::requestGeneration)
+        if (generations.isEmpty()) {
             return InterpretedGeofenceEvent.Ignored("irrelevant_request")
+        }
+        if (currentGeneration !in generations) {
+            return InterpretedGeofenceEvent.Ignored("stale_generation")
         }
         return when (transition) {
             Geofence.GEOFENCE_TRANSITION_ENTER -> InterpretedGeofenceEvent.Transition(
                 PresenceState.HOME,
                 "enter",
+                currentGeneration,
             )
             Geofence.GEOFENCE_TRANSITION_EXIT -> InterpretedGeofenceEvent.Transition(
                 PresenceState.AWAY,
                 "exit",
+                currentGeneration,
             )
             else -> InterpretedGeofenceEvent.Ignored("unknown_transition")
         }
     }
 }
-
-const val GEOFENCE_REQUEST_ID = "home_geofence_v1"

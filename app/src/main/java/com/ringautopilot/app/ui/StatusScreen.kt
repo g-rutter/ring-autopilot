@@ -227,7 +227,11 @@ private fun ModeHero(state: StatusUiState) {
                 state.geofenceRegistrationHealth == GeofenceRegistrationHealth.UNAVAILABLE -> "Unavailable"
                 state.geofencePresence == PresenceState.HOME -> "Home"
                 state.geofencePresence == PresenceState.AWAY -> "Away"
-                else -> "Waiting"
+                state.geofenceRegistrationHealth == GeofenceRegistrationHealth.REGISTERING ->
+                    "Registration pending"
+                state.geofenceRegistrationHealth == GeofenceRegistrationHealth.REGISTERED ->
+                    "Waiting for first location"
+                else -> "Registration pending"
             })
             PresenceRow("Combined", presenceLabel(state.presence))
         }
@@ -329,6 +333,12 @@ private fun ConfigurationPage(
                 }
                 if (latitude == null || longitude == null) Text("Tap the map to choose home.",
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                if (state.geofenceRegistrationHealth == GeofenceRegistrationHealth.REGISTERED &&
+                    state.geofencePresence == PresenceState.UNKNOWN) {
+                    OutlinedButton(onClick = viewModel::retryGeofenceInitialState) {
+                        Text("Retry current location")
+                    }
+                }
             }
         }
         if (!wifiEnabled && !geofenceEnabled) Text("Enable at least one presence feature.",

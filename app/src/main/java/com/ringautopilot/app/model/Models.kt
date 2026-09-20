@@ -27,6 +27,7 @@ data class AutomationSettings(
     val homeLatitude: Double? = null,
     val homeLongitude: Double? = null,
     val homeGeofenceRadiusMeters: Float = DEFAULT_GEOFENCE_RADIUS_METERS,
+    val geofenceDefinitionGeneration: Long = 0L,
     val ringLocationId: String = "",
     val controlMode: ControlMode = ControlMode.AUTO,
     val departureDelaySeconds: Long = 30,

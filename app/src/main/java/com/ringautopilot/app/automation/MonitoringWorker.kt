@@ -54,7 +54,9 @@ class MonitoringWorker(
             },
         )
             controller = activeController
-            activeContainer.geofenceManager.reconcile("monitoring_worker")
+            com.ringautopilot.app.geofence.GeofenceWorkScheduler.scheduleRegistration(
+                applicationContext, "monitoring_worker",
+            )
             activeController.runOnce()
             activeContainer.statusStore.saveControlMode(activeContainer.settingsRepository.settings.value.controlMode)
             activeContainer.statusStore.saveCameraMode(activeContainer.ringService.mode.value)
