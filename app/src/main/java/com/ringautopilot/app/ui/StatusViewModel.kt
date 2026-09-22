@@ -65,10 +65,18 @@ class StatusViewModel(private val container: AppContainer) : ViewModel() {
                 container.appContext)
         },
         onCheckFinished = { presence, status, origin ->
-            val result = checkResult(presence, status)
+            val automaticFailure = origin == CheckOrigin.AUTOMATIC && status is AutomationStatus.Failed
+            val result = checkResult(presence, status, reportFailure = !automaticFailure)
             container.statusStore.saveCheck(result.summary, result.problem,
                 automated = origin == CheckOrigin.AUTOMATIC)
             RingWidgetProvider.updateAll(container.appContext)
+            if (automaticFailure) {
+                com.ringautopilot.app.automation.MonitoringWorkScheduler.scheduleAutomaticRetry(
+                    container.appContext)
+            } else if (origin == CheckOrigin.AUTOMATIC) {
+                com.ringautopilot.app.automation.MonitoringWorkScheduler.cancelAutomaticRetry(
+                    container.appContext)
+            }
         },
     )
     private val mutableRingValidation = MutableStateFlow(RingValidationState())

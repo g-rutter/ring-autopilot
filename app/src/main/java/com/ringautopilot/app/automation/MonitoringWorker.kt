@@ -2,6 +2,7 @@ package com.ringautopilot.app.automation
 
 import android.content.Context
 import androidx.work.CoroutineWorker
+import androidx.work.BackoffPolicy
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
@@ -47,7 +48,11 @@ class MonitoringWorker(
                 MonitoringWorkScheduler.schedulePending(applicationContext, delayMillis, replace)
             },
             onCheckFinished = { presence, status, origin ->
-                val result = checkResult(presence, status)
+                val result = checkResult(
+                    presence,
+                    status,
+                    reportFailure = isPersistentFailure(runAttemptCount),
+                )
                 activeContainer.statusStore.saveCheck(result.summary, result.problem,
                     automated = origin == CheckOrigin.AUTOMATIC)
                 RingWidgetProvider.updateAll(applicationContext)
@@ -84,8 +89,12 @@ class MonitoringWorker(
         } catch (error: Exception) {
             reason = errorReason(error)
             Diagnostics.error("work_exception", mapOf("task" to task, "workId" to id, "reason" to reason), error)
-            container?.statusStore?.saveCheck("Presence automation failed", true,
-                automated = true)
+            container?.statusStore?.saveCheck(
+                if (isPersistentFailure(runAttemptCount)) "Presence automation failed"
+                else "Apply auto · Retrying",
+                problem = isPersistentFailure(runAttemptCount),
+                automated = true,
+            )
             RingWidgetProvider.updateAll(applicationContext)
             Result.retry()
         } finally {
@@ -95,12 +104,21 @@ class MonitoringWorker(
                 "durationMs" to System.currentTimeMillis() - started))
         }
     }
+
+    companion object {
+        private const val FAILURES_BEFORE_WIDGET_ISSUE = 4
+
+        internal fun isPersistentFailure(runAttemptCount: Int): Boolean =
+            runAttemptCount + 1 >= FAILURES_BEFORE_WIDGET_ISSUE
+    }
 }
 
 object MonitoringWorkScheduler {
     private const val UNIQUE_WORK_NAME = "ring-presence-monitoring"
     private const val PENDING_WORK_NAME = "ring-pending-change"
     private const val GEOFENCE_TRANSITION_WORK_NAME = "ring-geofence-transition"
+    private const val AUTOMATIC_RETRY_WORK_NAME = "ring-automatic-retry"
+    private const val BACKOFF_MINUTES = 1L
 
     fun schedule(context: Context) {
         val constraints = Constraints.Builder()
@@ -108,19 +126,21 @@ object MonitoringWorkScheduler {
             .build()
         val request = PeriodicWorkRequestBuilder<MonitoringWorker>(15, TimeUnit.MINUTES)
             .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_MINUTES, TimeUnit.MINUTES)
             .setInputData(Data.Builder().putString("task", "periodic").build())
             .build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             UNIQUE_WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             request,
         )
-        Diagnostics.info("work_enqueue", mapOf("task" to "periodic", "workName" to UNIQUE_WORK_NAME, "policy" to "keep", "delayMs" to 0, "constraints" to "connected", "workId" to request.id))
+        Diagnostics.info("work_enqueue", mapOf("task" to "periodic", "workName" to UNIQUE_WORK_NAME, "policy" to "update", "delayMs" to 0, "constraints" to "connected", "workId" to request.id))
     }
 
     fun schedulePending(context: Context, delayMillis: Long, replace: Boolean) {
         val request = OneTimeWorkRequestBuilder<MonitoringWorker>()
             .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_MINUTES, TimeUnit.MINUTES)
             .setConstraints(Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setInputData(Data.Builder().putString("task", "pending").build())
@@ -135,8 +155,34 @@ object MonitoringWorkScheduler {
         WorkManager.getInstance(context).cancelUniqueWork(PENDING_WORK_NAME)
     }
 
+    fun scheduleAutomaticRetry(context: Context) {
+        val request = OneTimeWorkRequestBuilder<MonitoringWorker>()
+            .setInitialDelay(BACKOFF_MINUTES, TimeUnit.MINUTES)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_MINUTES, TimeUnit.MINUTES)
+            .setConstraints(Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setInputData(Data.Builder().putString("task", "automatic_retry").build())
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            AUTOMATIC_RETRY_WORK_NAME, ExistingWorkPolicy.KEEP, request,
+        )
+        Diagnostics.info("work_enqueue", mapOf(
+            "task" to "automatic_retry",
+            "workName" to AUTOMATIC_RETRY_WORK_NAME,
+            "policy" to "keep",
+            "delayMs" to TimeUnit.MINUTES.toMillis(BACKOFF_MINUTES),
+            "constraints" to "connected",
+            "workId" to request.id,
+        ))
+    }
+
+    fun cancelAutomaticRetry(context: Context) {
+        WorkManager.getInstance(context).cancelUniqueWork(AUTOMATIC_RETRY_WORK_NAME)
+    }
+
     fun scheduleGeofenceTransition(context: Context) {
         val request = OneTimeWorkRequestBuilder<MonitoringWorker>()
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_MINUTES, TimeUnit.MINUTES)
             .setConstraints(Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setInputData(Data.Builder().putString("task", "geofence_transition").build())

@@ -4,8 +4,14 @@ import com.ringautopilot.app.model.PresenceState
 
 data class CheckResult(val summary: String, val problem: Boolean)
 
-fun checkResult(presence: PresenceState, status: AutomationStatus): CheckResult = when {
-    status is AutomationStatus.Failed -> CheckResult("Apply auto failed: ${status.message}", true)
+fun checkResult(
+    presence: PresenceState,
+    status: AutomationStatus,
+    reportFailure: Boolean = true,
+): CheckResult = when {
+    status is AutomationStatus.Failed && reportFailure ->
+        CheckResult("Apply auto failed: ${status.message}", true)
+    status is AutomationStatus.Failed -> CheckResult("Apply auto · Retrying", false)
     presence == PresenceState.UNKNOWN || presence == PresenceState.NOT_CONFIGURED ->
         CheckResult("Presence unavailable", true)
     status is AutomationStatus.ManualOverride -> CheckResult("Auto is off", false)

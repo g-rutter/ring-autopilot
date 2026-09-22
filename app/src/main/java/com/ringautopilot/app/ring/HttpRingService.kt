@@ -33,7 +33,9 @@ class HttpRingService(
         Settings.Secure.ANDROID_ID,
     ).orEmpty()
     private val mutableMode = MutableStateFlow(RingMode.UNAVAILABLE)
-    private val accessTokenCache = AccessTokenCache()
+    // Activity and WorkManager containers can overlap. Sharing this cache keeps
+    // refresh-token rotation atomic across every Ring client in this process.
+    private val accessTokenCache = processAccessTokenCache
 
     override val mode: StateFlow<RingMode> = mutableMode.asStateFlow()
 
@@ -253,5 +255,9 @@ class HttpRingService(
         "away" -> RingMode.AWAY
         "disarmed", "none" -> RingMode.DISARMED
         else -> RingMode.UNKNOWN
+    }
+
+    private companion object {
+        val processAccessTokenCache = AccessTokenCache()
     }
 }

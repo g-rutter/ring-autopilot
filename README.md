@@ -22,7 +22,8 @@ and may require maintenance if Ring changes that API.
 - In Auto mode, request **Disarmed** after combined presence has remained Home
   for one second, or **Away** after it has remained Away for 30 seconds. Changes
   are skipped when Ring already has the requested mode.
-- Retry a failed mode write up to four times with capped exponential backoff,
+- Retry automatic Ring reads and writes up to four times in-process, then let
+  WorkManager continue with exponential backoff,
   and show a local notification after a successful automatic change.
 - Keep Auto on or off across app restarts. **Force Away** and **Force Disarm** turn Auto
   off and send a one-time Ring mode request; neither is stored as a control mode.
@@ -77,9 +78,11 @@ The following Auto-mode values are fixed code defaults, rather than settings:
 | Mode-change attempts | 4 |
 | Initial retry backoff | 5 seconds |
 
-The maximum retry delay is five minutes. A read of the current Ring mode occurs
-before and after the grace period; a failed read fails that transition directly
-and is not itself retried by the controller.
+The in-process maximum retry delay is five minutes. Background work then retries
+after one minute with exponential backoff. Transient automatic failures are
+shown as retrying and do not turn the widget red; the widget reports an issue
+only after four failed worker runs. Explicit user actions use at most two quick
+attempts so the dashboard reports back promptly.
 
 ## Source layout
 

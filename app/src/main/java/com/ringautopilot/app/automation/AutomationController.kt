@@ -111,7 +111,7 @@ class AutomationController(
                 logDecision("manual_apply", presenceService.presence.value)
                 return@launch
             }
-            switchIfNeeded(desiredMode)
+            switchIfNeeded(desiredMode, RetryPolicy.manual())
             onCheckFinished(presenceService.presence.value, mutableStatus.value, CheckOrigin.MANUAL_APPLY)
             logDecision("manual_apply", presenceService.presence.value)
         }
@@ -195,7 +195,8 @@ class AutomationController(
 
         // Do not present a pending change when Ring is already in the desired
         // mode (or when its status cannot yet be read).
-        val currentMode = refreshModeWithRetry().getOrElse {
+        val retryPolicy = RetryPolicy.automatic(settings)
+        val currentMode = refreshModeWithRetry(retryPolicy).getOrElse {
             lastDecision = "failed"
             mutableStatus.value = AutomationStatus.Failed(
                 it.message ?: "Could not read Ring mode",
@@ -240,7 +241,7 @@ class AutomationController(
             mutableStatus.value = AutomationStatus.Idle
             return
         }
-        switchIfNeeded(desiredMode)
+        switchIfNeeded(desiredMode, retryPolicy)
         if (mutableStatus.value !is AutomationStatus.Failed) clearPendingChange()
     }
 
@@ -260,8 +261,8 @@ class AutomationController(
         }
     }
 
-    private suspend fun switchIfNeeded(desiredMode: RingMode) {
-        val currentMode = refreshModeWithRetry().getOrElse {
+    private suspend fun switchIfNeeded(desiredMode: RingMode, retryPolicy: RetryPolicy) {
+        val currentMode = refreshModeWithRetry(retryPolicy).getOrElse {
             lastDecision = "failed"
             mutableStatus.value = AutomationStatus.Failed(it.message ?: "Could not read Ring mode")
             return
@@ -272,9 +273,8 @@ class AutomationController(
             return
         }
 
-        val maxAttempts = settingsRepository.settings.value.modeChangeMaxAttempts.coerceAtLeast(1)
-        val initialBackoff = settingsRepository.settings.value.modeChangeInitialBackoffSeconds
-            .coerceAtLeast(1)
+        val maxAttempts = retryPolicy.maxAttempts
+        val initialBackoff = retryPolicy.initialBackoffSeconds
         var lastFailure: Throwable? = null
 
         repeat(maxAttempts) { index ->
@@ -310,18 +310,29 @@ class AutomationController(
         )
     }
 
-    private suspend fun refreshModeWithRetry(): Result<RingMode> {
-        val settings = settingsRepository.settings.value
-        val attempts = settings.modeChangeMaxAttempts.coerceAtLeast(1)
+    private suspend fun refreshModeWithRetry(retryPolicy: RetryPolicy): Result<RingMode> {
+        val attempts = retryPolicy.maxAttempts
         repeat(attempts) { index ->
             val result = ringService.refreshMode()
             if (result.isSuccess || index == attempts - 1) return result
             Diagnostics.warn("check_retry", mapOf("operation" to "mode_read", "attempt" to index + 1,
-                "backoffSeconds" to retryDelaySeconds(settings.modeChangeInitialBackoffSeconds, index),
+                "backoffSeconds" to retryDelaySeconds(retryPolicy.initialBackoffSeconds, index),
                 "reason" to errorReason(result.exceptionOrNull()!!)))
-            delay(retryDelaySeconds(settings.modeChangeInitialBackoffSeconds, index) * 1_000)
+            delay(retryDelaySeconds(retryPolicy.initialBackoffSeconds, index) * 1_000)
         }
         error("No Ring status attempt was made")
+    }
+
+    private data class RetryPolicy(val maxAttempts: Int, val initialBackoffSeconds: Long) {
+        companion object {
+            fun automatic(settings: com.ringautopilot.app.model.AutomationSettings) = RetryPolicy(
+                settings.modeChangeMaxAttempts.coerceAtLeast(1),
+                settings.modeChangeInitialBackoffSeconds.coerceAtLeast(1),
+            )
+
+            // Explicit user actions should report back promptly.
+            fun manual() = RetryPolicy(maxAttempts = 2, initialBackoffSeconds = 2)
+        }
     }
 
     companion object {

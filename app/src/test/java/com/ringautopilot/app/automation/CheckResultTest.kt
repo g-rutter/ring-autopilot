@@ -37,4 +37,16 @@ class CheckResultTest {
             checkResult(PresenceState.HOME, AutomationStatus.Failed("Connection lost")),
         )
     }
+
+    @Test
+    fun `transient automatic failure remains a healthy retry`() {
+        assertEquals(
+            CheckResult("Apply auto · Retrying", false),
+            checkResult(
+                PresenceState.HOME,
+                AutomationStatus.Failed("Connection lost"),
+                reportFailure = false,
+            ),
+        )
+    }
 }
