@@ -6,10 +6,12 @@
     android:background="@drawable/widget_background_90">
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:layout_gravity="center_vertical" android:orientation="horizontal"
-        android:gravity="top" android:paddingStart="16dp" android:paddingEnd="38dp"
+        android:gravity="top"
+        android:paddingStart="@dimen/widget_content_start_padding"
+        android:paddingEnd="@dimen/widget_content_end_padding"
         android:paddingVertical="5dp">
     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-        android:layout_weight="1.2" android:gravity="top" android:orientation="vertical">
+        android:layout_weight="1.06" android:gravity="top" android:orientation="vertical">
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="CAMERAS" android:textColor="#89DDFB" android:textSize="9sp" android:textStyle="bold" />
         <TextView android:id="@+id/widget_camera" style="@style/WidgetStatusText"
@@ -17,15 +19,16 @@
             android:text="Unknown" />
     </LinearLayout>
     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-        android:layout_weight="1" android:gravity="top" android:orientation="vertical">
+        android:layout_weight="0.9" android:gravity="top" android:orientation="vertical">
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="CONTROL" android:textColor="#89DDFB" android:textSize="9sp" android:textStyle="bold" />
         <TextView android:id="@+id/widget_control" style="@style/WidgetStatusText"
             android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="Auto" />
     </LinearLayout>
+    <!-- This weight is the main knob for the space before the action button. -->
     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-        android:layout_weight="1.2" android:gravity="top" android:orientation="vertical">
+        android:layout_weight="1.04" android:gravity="top" android:orientation="vertical">
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="HEALTH" android:textColor="#89DDFB" android:textSize="9sp" android:textStyle="bold" />
         <TextView android:id="@+id/widget_health" style="@style/WidgetStatusText"
@@ -37,7 +40,8 @@
     </LinearLayout>
     <TextView android:id="@+id/widget_run_auto_now"
         android:layout_width="58dp" android:layout_height="38dp"
-        android:layout_gravity="center_vertical" android:layout_marginEnd="32dp"
+        android:layout_gravity="center_vertical"
+        android:layout_marginEnd="@dimen/widget_action_end_clearance"
         android:gravity="center"
         android:background="@drawable/widget_action_background"
         android:contentDescription="@string/widget_run_auto_now"

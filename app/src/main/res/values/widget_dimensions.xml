@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Horizontal layout knobs for the home-screen widget. -->
+    <dimen name="widget_content_start_padding">24dp</dimen>
+    <dimen name="widget_content_end_padding">4dp</dimen>
+    <dimen name="widget_action_end_clearance">60dp</dimen>
+</resources>
