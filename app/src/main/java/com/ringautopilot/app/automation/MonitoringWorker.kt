@@ -48,10 +48,11 @@ class MonitoringWorker(
                 MonitoringWorkScheduler.schedulePending(applicationContext, delayMillis, replace)
             },
             onCheckFinished = { presence, status, origin ->
+                val manualApply = origin == CheckOrigin.MANUAL_APPLY
                 val result = checkResult(
                     presence,
                     status,
-                    reportFailure = isPersistentFailure(runAttemptCount),
+                    reportFailure = manualApply || isPersistentFailure(runAttemptCount),
                 )
                 activeContainer.statusStore.saveCheck(result.summary, result.problem,
                     automated = origin == CheckOrigin.AUTOMATIC)
@@ -62,11 +63,12 @@ class MonitoringWorker(
             com.ringautopilot.app.geofence.GeofenceWorkScheduler.scheduleRegistration(
                 applicationContext, "monitoring_worker",
             )
-            activeController.runOnce()
+            val manualApply = task == "manual_apply"
+            if (manualApply) activeController.syncNowOnce() else activeController.runOnce()
             activeContainer.statusStore.saveControlMode(activeContainer.settingsRepository.settings.value.controlMode)
             activeContainer.statusStore.saveCameraMode(activeContainer.ringService.mode.value)
             RingWidgetProvider.updateAll(applicationContext)
-            if (activeController.status.value is AutomationStatus.Failed) {
+            if (!manualApply && activeController.status.value is AutomationStatus.Failed) {
                 reason = "check_failed"
                 Result.retry()
             } else {
@@ -89,14 +91,16 @@ class MonitoringWorker(
         } catch (error: Exception) {
             reason = errorReason(error)
             Diagnostics.error("work_exception", mapOf("task" to task, "workId" to id, "reason" to reason), error)
+            val manualApply = task == "manual_apply"
             container?.statusStore?.saveCheck(
-                if (isPersistentFailure(runAttemptCount)) "Presence automation failed"
+                if (manualApply) "Apply auto failed"
+                else if (isPersistentFailure(runAttemptCount)) "Presence automation failed"
                 else "Apply auto · Retrying",
-                problem = isPersistentFailure(runAttemptCount),
-                automated = true,
+                problem = manualApply || isPersistentFailure(runAttemptCount),
+                automated = !manualApply,
             )
             RingWidgetProvider.updateAll(applicationContext)
-            Result.retry()
+            if (manualApply) Result.failure() else Result.retry()
         } finally {
             controller?.stop()
             Diagnostics.info("work_end", mapOf("task" to task, "workId" to id,
@@ -118,6 +122,7 @@ object MonitoringWorkScheduler {
     private const val PENDING_WORK_NAME = "ring-pending-change"
     private const val GEOFENCE_TRANSITION_WORK_NAME = "ring-geofence-transition"
     private const val AUTOMATIC_RETRY_WORK_NAME = "ring-automatic-retry"
+    private const val MANUAL_APPLY_WORK_NAME = "ring-manual-apply"
     private const val BACKOFF_MINUTES = 1L
 
     fun schedule(context: Context) {
@@ -178,6 +183,27 @@ object MonitoringWorkScheduler {
 
     fun cancelAutomaticRetry(context: Context) {
         WorkManager.getInstance(context).cancelUniqueWork(AUTOMATIC_RETRY_WORK_NAME)
+    }
+
+    fun scheduleManualApply(context: Context) {
+        val request = OneTimeWorkRequestBuilder<MonitoringWorker>()
+            .setConstraints(Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setInputData(Data.Builder().putString("task", "manual_apply").build())
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            MANUAL_APPLY_WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            request,
+        )
+        Diagnostics.info("work_enqueue", mapOf(
+            "task" to "manual_apply",
+            "workName" to MANUAL_APPLY_WORK_NAME,
+            "policy" to "replace",
+            "delayMs" to 0,
+            "constraints" to "connected",
+            "workId" to request.id,
+        ))
     }
 
     fun scheduleGeofenceTransition(context: Context) {

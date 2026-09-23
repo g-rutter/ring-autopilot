@@ -3,4 +3,5 @@
     <string name="app_name">Ring Autopilot</string>
     <string name="widget_description">Camera mode and automation status</string>
     <string name="widget_open">Open Ring Autopilot</string>
+    <string name="widget_run_auto_now">Run auto now</string>
 </resources>

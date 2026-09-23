@@ -101,20 +101,25 @@ class AutomationController(
     fun syncNow() {
         transitionJob?.cancel()
         transitionJob = scope.launch {
-            presenceService.refresh()
-            lastDecision = "unavailable"
-            currentOpId = operationId()
-            Diagnostics.info("check_start", checkFields("manual_apply", presenceService.presence.value))
-            val desiredMode = desiredModeFor(presenceService.presence.value) ?: run {
-                mutableStatus.value = AutomationStatus.Idle
-                onCheckFinished(presenceService.presence.value, mutableStatus.value, CheckOrigin.MANUAL_APPLY)
-                logDecision("manual_apply", presenceService.presence.value)
-                return@launch
-            }
-            switchIfNeeded(desiredMode, RetryPolicy.manual())
+            syncNowOnce()
+        }
+    }
+
+    /** Performs the one-off user-requested sync and waits for it to finish. */
+    suspend fun syncNowOnce() {
+        presenceService.refresh()
+        lastDecision = "unavailable"
+        currentOpId = operationId()
+        Diagnostics.info("check_start", checkFields("manual_apply", presenceService.presence.value))
+        val desiredMode = desiredModeFor(presenceService.presence.value) ?: run {
+            mutableStatus.value = AutomationStatus.Idle
             onCheckFinished(presenceService.presence.value, mutableStatus.value, CheckOrigin.MANUAL_APPLY)
             logDecision("manual_apply", presenceService.presence.value)
+            return
         }
+        switchIfNeeded(desiredMode, RetryPolicy.manual())
+        onCheckFinished(presenceService.presence.value, mutableStatus.value, CheckOrigin.MANUAL_APPLY)
+        logDecision("manual_apply", presenceService.presence.value)
     }
 
     private var lastPresenceConfiguration: List<Any?>? = null

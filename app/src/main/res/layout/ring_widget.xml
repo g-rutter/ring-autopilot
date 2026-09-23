@@ -6,7 +6,7 @@
     android:background="@drawable/widget_background_90">
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:layout_gravity="center_vertical" android:orientation="horizontal"
-        android:gravity="top" android:paddingStart="12dp" android:paddingEnd="42dp"
+        android:gravity="top" android:paddingStart="8dp" android:paddingEnd="38dp"
         android:paddingVertical="5dp">
     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
         android:layout_weight="1.2" android:gravity="top" android:orientation="vertical">
@@ -25,7 +25,7 @@
             android:text="Auto" />
     </LinearLayout>
     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-        android:layout_weight="1.4" android:gravity="top" android:orientation="vertical">
+        android:layout_weight="1.2" android:gravity="top" android:orientation="vertical">
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="HEALTH" android:textColor="#89DDFB" android:textSize="9sp" android:textStyle="bold" />
         <TextView android:id="@+id/widget_health" style="@style/WidgetStatusText"
@@ -35,6 +35,15 @@
             android:layout_height="wrap_content" android:text="No checks" android:textColor="#FFF7F0"
             android:textSize="10sp" android:maxLines="1" />
     </LinearLayout>
+    <TextView android:id="@+id/widget_run_auto_now"
+        android:layout_width="58dp" android:layout_height="38dp"
+        android:layout_gravity="center_vertical" android:layout_marginEnd="32dp"
+        android:gravity="center"
+        android:background="@drawable/widget_action_background"
+        android:contentDescription="@string/widget_run_auto_now"
+        android:paddingHorizontal="4dp" android:text="@string/widget_run_auto_now"
+        android:textAllCaps="true" android:textColor="#082A37" android:textSize="9sp"
+        android:textStyle="bold" />
     </LinearLayout>
     <ImageView android:id="@+id/widget_open" android:layout_width="36dp"
         android:layout_height="36dp" android:layout_gravity="bottom|end"

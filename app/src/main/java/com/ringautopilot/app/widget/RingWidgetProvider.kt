@@ -3,12 +3,14 @@ package com.ringautopilot.app.widget
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
 import com.ringautopilot.app.MainActivity
 import com.ringautopilot.app.R
+import com.ringautopilot.app.automation.MonitoringWorkScheduler
 import com.ringautopilot.app.model.ControlMode
 import com.ringautopilot.app.model.RingMode
 import com.ringautopilot.app.storage.StatusStore
@@ -63,8 +65,21 @@ class RingWidgetProvider : AppWidgetProvider() {
                     Intent(context, MainActivity::class.java),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 setOnClickPendingIntent(R.id.widget_open, open)
+                val runAutoNow = PendingIntent.getBroadcast(
+                    context,
+                    id,
+                    Intent(context, WidgetActionReceiver::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+                setOnClickPendingIntent(R.id.widget_run_auto_now, runAutoNow)
             }
         }
+    }
+}
+
+class WidgetActionReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        MonitoringWorkScheduler.scheduleManualApply(context)
     }
 }
 

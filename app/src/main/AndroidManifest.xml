@@ -34,6 +34,9 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/ring_widget_info" />
         </receiver>
         <receiver
+            android:name=".widget.WidgetActionReceiver"
+            android:exported="false" />
+        <receiver
             android:name=".geofence.GeofenceBroadcastReceiver"
             android:exported="false" />
         <receiver
